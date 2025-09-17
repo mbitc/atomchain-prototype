@@ -74,26 +74,38 @@
       }
 
       function determineMetadataForNewAtom(newAtom, atoms) {
-        // Pradinis metadata
-        let meta = '';
+        const linkedAtoms = atoms.filter((a) => a.links.includes(newAtom.id));
+        const flagCounts = {};
 
-        // Pavyzdinė taisyklė: jei naujas atomas turi būti susijęs su atomu 1 ar 2, pridedam 'link-next'
-        const linkedIds = atoms
-          .filter((a) => a.links.includes(newAtom.id))
-          .map((a) => a.id);
+        // Surenkame visų susijusių atomų metadata flag'us
+        linkedAtoms.forEach((a) => {
+          a.metadata.split(',').forEach((flag) => {
+            flag = flag.trim();
+            if (!flag) return;
+            if (!flagCounts[flag]) flagCounts[flag] = 0;
+            flagCounts[flag]++;
+          });
+        });
 
-        if (linkedIds.length > 0) {
-          meta += 'link-next';
+        // Nustatome threshold, pvz., jei >50% susijusių turi flag
+        const threshold = linkedAtoms.length / 2;
+        const newMeta = [];
+
+        for (const flag in flagCounts) {
+          if (flagCounts[flag] > threshold) {
+            newMeta.push(flag);
+          }
         }
 
-        // Kitas pavyzdys: jei yra bent vienas atomas su spawn metadata, naujas paveldi 'spawn'
-        if (atoms.some((a) => a.metadata.includes('spawn'))) {
-          if (meta) meta += ',';
-          meta += 'spawn';
+        // Jei nėra susijusių, galima pridėti default rules
+        if (newMeta.length === 0) {
+          if (atoms.some((a) => a.metadata.includes('spawn')))
+            newMeta.push('spawn');
+          if (atoms.some((a) => a.metadata.includes('link-next')))
+            newMeta.push('link-next');
         }
 
-        // Galima pridėti kitų taisyklių pagal atomų kombinacijas
-        newAtom.metadata = meta;
+        newAtom.metadata = newMeta.join(',');
         log(`${newAtom.id} metadata auto-set to "${newAtom.metadata}"`);
       }
 
