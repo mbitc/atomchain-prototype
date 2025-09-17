@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AtomChain Interactive Prototype</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+      }
+      .atom {
+        margin-bottom: 15px;
+        border: 1px solid #ccc;
+        padding: 10px;
+      }
+      input,
+      select {
+        margin-right: 5px;
+      }
+      button {
+        margin-left: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>AtomChain Interactive Prototype</h1>
+
+    <h2>Create New Atom</h2>
+    State (comma separated):
+    <input type="text" id="new-state" value="0,0,0" /> Metadata:
+    <input type="text" id="new-meta" value="" />
+    <button onclick="createNewAtom()">Create Atom</button>
+
+    <h2>Link Atoms</h2>
+    Source:
+    <select id="link-source"></select>
+    Target:
+    <select id="link-target"></select>
+    <button onclick="linkSelectedAtoms()">Link</button>
+
+    <div id="atoms-container"></div>
+    <div id="output"></div>
+
+    <script>
+      class Atom {
+        constructor(id, state, metadata) {
+          this.id = id;
+          this.state = state;
+          this.links = [];
+          this.metadata = metadata;
+        }
+
+        spawnNext(idCounter, atoms) {
+          if (
+            this.metadata.includes('spawn') &&
+            !atoms.find((a) => a.id === `atom-${idCounter}`)
+          ) {
+            const newAtom = new Atom(`atom-${idCounter}`, [...this.state], '');
+            log(`${this.id} spawned ${newAtom.id}`);
+            return newAtom;
+          }
+          return null;
+        }
+
+        linkAtoms(atoms) {
+          if (this.metadata.includes('link-next')) {
+            atoms.forEach((a) => {
+              if (a.id !== this.id && !this.links.includes(a.id)) {
+                this.links.push(a.id);
+                log(`${this.id} linked to ${a.id}`);
+              }
+            });
+          }
+        }
+
+        applyOperator(index, value) {
+          if (index < this.state.length) {
+            this.state[index] += value;
+            log(`${this.id} state[${index}] changed by ${value}`);
+          }
+        }
+      }
+
+      // --- Pagalbinės funkcijos ---
+      const atoms = [];
+      let idCounter = 1;
+      const container = document.getElementById('atoms-container');
+      const output = document.getElementById('output');
+
+      function log(msg) {
+        const div = document.createElement('div');
+        div.textContent = msg;
+        output.appendChild(div);
+      }
+
+      function renderAtoms() {
+        container.innerHTML = '';
+        const sourceSelect = document.getElementById('link-source');
+        const targetSelect = document.getElementById('link-target');
+        sourceSelect.innerHTML = '';
+        targetSelect.innerHTML = '';
+
+        atoms.forEach((atom) => {
+          const div = document.createElement('div');
+          div.className = 'atom';
+          div.innerHTML = `<strong>${
+            atom.id
+          }</strong><br>State: ${atom.state.join(', ')}<br>
+      Links: [${atom.links.join(', ')}]<br>
+      Metadata: <input type="text" value="${atom.metadata}" id="meta-${
+            atom.id
+          }"/>
+      <button onclick="updateAtom('${atom.id}')">Update</button>`;
+
+          atom.state.forEach((v, i) => {
+            const btnInc = document.createElement('button');
+            btnInc.textContent = `+1 state[${i}]`;
+            btnInc.onclick = () => {
+              atom.applyOperator(i, 1);
+              renderAtoms();
+            };
+            div.appendChild(btnInc);
+          });
+
+          container.appendChild(div);
+
+          // Update selects for linking
+          const opt1 = document.createElement('option');
+          opt1.value = atom.id;
+          opt1.text = atom.id;
+          sourceSelect.appendChild(opt1);
+          const opt2 = document.createElement('option');
+          opt2.value = atom.id;
+          opt2.text = atom.id;
+          targetSelect.appendChild(opt2);
+        });
+      }
+
+      // --- Vartotojo funkcijos ---
+      function updateAtom(id) {
+        const atom = atoms.find((a) => a.id === id);
+        if (atom) {
+          const metaInput = document.getElementById(`meta-${id}`);
+          atom.metadata = metaInput.value;
+          log(`${atom.id} metadata updated to "${atom.metadata}"`);
+          simulateIteration();
+        }
+      }
+
+      function createNewAtom() {
+        const stateStr = document.getElementById('new-state').value;
+        const metadata = document.getElementById('new-meta').value;
+        const state = stateStr.split(',').map((s) => parseInt(s.trim()));
+        const atom = new Atom(`atom-${idCounter++}`, state, metadata);
+        atoms.push(atom);
+        log(`Created ${atom.id}`);
+        renderAtoms();
+      }
+
+      function linkSelectedAtoms() {
+        const sourceId = document.getElementById('link-source').value;
+        const targetId = document.getElementById('link-target').value;
+        if (sourceId && targetId && sourceId !== targetId) {
+          const sourceAtom = atoms.find((a) => a.id === sourceId);
+          if (sourceAtom && !sourceAtom.links.includes(targetId)) {
+            sourceAtom.links.push(targetId);
+            log(`${sourceId} linked to ${targetId}`);
+            renderAtoms();
+          }
+        }
+      }
+
+      // --- Deterministinė iteracija ---
+      function simulateIteration() {
+        const newAtoms = [];
+        atoms.forEach((atom) => {
+          atom.linkAtoms(atoms);
+          const spawned = atom.spawnNext(idCounter, atoms.concat(newAtoms));
+          if (spawned) {
+            newAtoms.push(spawned);
+            idCounter++;
+          }
+        });
+        atoms.push(...newAtoms);
+        renderAtoms();
+      }
+
+      // --- Inicializacija ---
+      atoms.push(new Atom(`atom-${idCounter++}`, [1, 0, 0], 'spawn,link-next'));
+      atoms.push(new Atom(`atom-${idCounter++}`, [0, 1, 0], 'link-next'));
+      atoms.push(new Atom(`atom-${idCounter++}`, [0, 0, 1], ''));
+      simulateIteration();
+    </script>
+  </body>
+</html>
