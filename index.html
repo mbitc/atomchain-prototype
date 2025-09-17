@@ -210,7 +210,7 @@
   <body>
     <div class="container">
       <div class="header">
-        <h1>⚛️ AtomChain: Dinaminė Evoliucija</h1>
+        <h1>AtomChain: Dinaminė Evoliucija</h1>
       </div>
 
       <div class="controls">
@@ -367,6 +367,9 @@
           // Trajektorijos sekimas
           this.updateTrail();
 
+          // Apsimokimas per ryšius - PIRMAS ŽINGSNIS
+          this.processLinks(atoms);
+
           // Fizikos taisyklės pagal state[]
           this.applyPhysics(atoms, systemParams);
 
@@ -454,27 +457,47 @@
         }
 
         deterministicBehavior(atoms) {
-          // Elgesys pagal metadata
+          // Elgesys pagal metadata + ryšių kūrimas
           switch (this.metadata) {
             case 'orbital_dancer':
-              // Orbitinis judejimas apie artimiausią atomą
+              // Orbitinis judejimas ir ryšių kūrimas su artimais
               const nearest = this.findNearestAtom(atoms);
               if (nearest) {
+                const distance = this.distanceTo(nearest);
+
+                // Judėjimas
                 const angle = Math.atan2(
                   this.state[1] - nearest.state[1],
                   this.state[0] - nearest.state[0]
                 );
                 this.velocity[0] += Math.cos(angle + Math.PI / 2) * 0.2;
                 this.velocity[1] += Math.sin(angle + Math.PI / 2) * 0.2;
+
+                // Ryšio kūrimas jei arti ir panašūs
+                if (
+                  distance < 80 &&
+                  !this.links.includes(nearest.id) &&
+                  Math.abs(this.state[2] - nearest.state[2]) < 40
+                ) {
+                  this.createLink(nearest, 'orbital_partnership');
+                  return {
+                    type: 'deterministic',
+                    behavior: this.metadata,
+                    action: 'link_created',
+                  };
+                }
               }
               break;
 
             case 'cluster_former':
-              // Traukiasi prie panašių atomų
+              // Traukiasi prie panašių atomų ir formuoja ryšius
               const similar = atoms.filter(
                 (a) =>
-                  a.id !== this.id && Math.abs(a.state[2] - this.state[2]) < 30
+                  a.id !== this.id &&
+                  Math.abs(a.state[2] - this.state[2]) < 30 &&
+                  this.distanceTo(a) < 120
               );
+
               if (similar.length > 0) {
                 const target = similar[0];
                 const dx = target.state[0] - this.state[0];
@@ -485,6 +508,44 @@
                   this.velocity[0] += (dx / distance) * 0.1;
                   this.velocity[1] += (dy / distance) * 0.1;
                 }
+
+                // Ryšio kūrimas
+                if (
+                  distance < 60 &&
+                  !this.links.includes(target.id) &&
+                  this.links.length < 4
+                ) {
+                  this.createLink(target, 'cluster_bond');
+                  return {
+                    type: 'deterministic',
+                    behavior: this.metadata,
+                    action: 'cluster_formed',
+                  };
+                }
+              }
+              break;
+
+            case 'boundary_keeper':
+              // Ieško atomų prie ribų ir formuoja apsaugos ryšius
+              const nearBoundary = atoms.filter((a) => {
+                if (a.id === this.id) return false;
+                return (
+                  (a.state[0] < 100 ||
+                    a.state[0] > 900 ||
+                    a.state[1] < 100 ||
+                    a.state[1] > 500) &&
+                  this.distanceTo(a) < 100
+                );
+              });
+
+              if (nearBoundary.length > 0 && this.links.length < 3) {
+                const target = nearBoundary[0];
+                this.createLink(target, 'boundary_protection');
+                return {
+                  type: 'deterministic',
+                  behavior: this.metadata,
+                  action: 'boundary_link',
+                };
               }
               break;
           }
@@ -496,39 +557,118 @@
 
           switch (this.metadata) {
             case 'energy_vampire':
-              // Absorbuoja energiją iš artimų atomų
-              atoms.forEach((other) => {
-                const distance = this.distanceTo(other);
-                if (distance < 80 && other.state[2] > this.state[2]) {
-                  const energyTransfer =
-                    Math.min(5, other.state[2] - this.state[2]) * 0.1;
-                  this.state[2] += energyTransfer;
-                  other.state[2] -= energyTransfer;
+              // Absorbuoja energiją iš artimų atomų ir formuoja ryšius
+              const energyTargets = atoms.filter(
+                (a) =>
+                  a.id !== this.id &&
+                  this.distanceTo(a) < 80 &&
+                  a.state[2] > this.state[2]
+              );
 
-                  // Spalvos kaita
-                  this.state[4] = (this.state[4] + 10) % 360;
+              energyTargets.forEach((target) => {
+                const energyTransfer =
+                  Math.min(5, target.state[2] - this.state[2]) * 0.1;
+                this.state[2] += energyTransfer;
+                target.state[2] -= energyTransfer;
+
+                // Parazitinis ryšys
+                if (!this.links.includes(target.id) && this.links.length < 3) {
+                  this.createLink(target, 'energy_drain', 0.8); // silpnas ryšys
                 }
+
+                // Spalvos kaita
+                this.state[4] = (this.state[4] + 10) % 360;
               });
+
+              if (energyTargets.length > 0) {
+                return {
+                  type: 'adaptive',
+                  behavior: this.metadata,
+                  action: 'energy_absorbed',
+                };
+              }
               break;
 
             case 'boundary_keeper':
-              // Jei per daug susispietė, stumia atomus
+              // Jei per daug susispietė, stumia atomus ir keičia ryšius
               if (context.crowded) {
                 this.state[3] += 5; // padidina gravitacijos jėgą
                 this.state[4] = (this.state[4] + 180) % 360; // keičia spalvą
+
+                // Stiprina esamus ryšius arba kuria naujus su stipriais atomais
+                const strongAtoms = atoms.filter(
+                  (a) =>
+                    a.id !== this.id &&
+                    a.state[2] > 70 &&
+                    this.distanceTo(a) < 100
+                );
+
+                if (strongAtoms.length > 0 && this.links.length < 2) {
+                  this.createLink(strongAtoms[0], 'defense_alliance', 1.2);
+                  return {
+                    type: 'adaptive',
+                    behavior: this.metadata,
+                    action: 'alliance_formed',
+                  };
+                }
               }
               break;
 
             case 'gravity_well':
-              // Dinamiškai keičia gravitacijos jėgą
+              // Dinamiškai keičia gravitacijos jėgą ir formuoja orbitalius ryšius
               this.state[3] = Math.min(
                 100,
                 this.state[3] + context.nearbyCount * 2
               );
+
+              // Formuoja orbitalius ryšius su atomais, kurie "orbitiuje"
+              const orbiters = atoms.filter((a) => {
+                if (a.id === this.id) return false;
+                const dist = this.distanceTo(a);
+                return dist > 60 && dist < 120 && !this.links.includes(a.id);
+              });
+
+              if (orbiters.length > 0 && this.links.length < 5) {
+                this.createLink(orbiters[0], 'orbital_capture', 0.9);
+                return {
+                  type: 'adaptive',
+                  behavior: this.metadata,
+                  action: 'orbital_link',
+                };
+              }
+              break;
+
+            case 'wanderer':
+              // Adaptyviai formuoja laikinus ryšius su srautais
+              const fastMovers = atoms.filter((a) => {
+                if (a.id === this.id) return false;
+                const speed = Math.sqrt(
+                  a.velocity[0] * a.velocity[0] + a.velocity[1] * a.velocity[1]
+                );
+                return speed > 2 && this.distanceTo(a) < 90;
+              });
+
+              if (fastMovers.length > 0 && this.links.length < 2) {
+                this.createLink(fastMovers[0], 'flow_connection', 0.6); // laikinas ryšys
+                return {
+                  type: 'adaptive',
+                  behavior: this.metadata,
+                  action: 'flow_joined',
+                };
+              }
               break;
           }
 
           return { type: 'adaptive', behavior: this.metadata, context };
+        }
+
+        simpleHash(input) {
+          let hash = 0;
+          const str = input.toString();
+          for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xffffffff;
+          }
+          return Math.abs(hash);
         }
 
         pseudoRandomBehavior(atoms) {
@@ -545,6 +685,39 @@
 
           // Spalvos kaita
           this.state[4] = (this.state[4] + (hash % 60)) % 360;
+
+          // Pseudo-atsitiktiniai ryšiai - eksperimentiniai
+          const candidates = atoms.filter(
+            (a) =>
+              a.id !== this.id &&
+              !this.links.includes(a.id) &&
+              this.distanceTo(a) < 150
+          );
+
+          if (candidates.length > 0 && this.links.length < 3) {
+            // Pasirenkame pagal hash, bet tik iš artimiausių
+            const sortedCandidates = candidates
+              .sort((a, b) => this.distanceTo(a) - this.distanceTo(b))
+              .slice(0, Math.min(3, candidates.length));
+
+            const choiceIndex = hash % sortedCandidates.length;
+            const chosen = sortedCandidates[choiceIndex];
+
+            this.createLink(
+              chosen,
+              'experimental_bond',
+              0.5 + (hash % 50) / 100
+            );
+
+            return {
+              type: 'pseudo_random',
+              hash,
+              angle,
+              magnitude,
+              action: 'experimental_link',
+              target: chosen.id,
+            };
+          }
 
           return { type: 'pseudo_random', hash, angle, magnitude };
         }
@@ -631,13 +804,231 @@
           }
         }
 
-        simpleHash(input) {
-          let hash = 0;
-          const str = input.toString();
-          for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xffffffff;
+        // Ryšių kūrimas ir valdymas
+        createLink(targetAtom, linkType, strength = 1.0) {
+          if (!this.links.includes(targetAtom.id) && this.links.length < 6) {
+            // Dvikryptis ryšys
+            this.links.push({
+              id: targetAtom.id,
+              type: linkType,
+              strength: strength,
+              age: 0,
+              totalTransfer: 0,
+            });
+
+            // Atgalinis ryšys
+            if (
+              !targetAtom.links.some((link) =>
+                typeof link === 'object'
+                  ? link.id === this.id
+                  : link === this.id
+              )
+            ) {
+              targetAtom.links.push({
+                id: this.id,
+                type: linkType,
+                strength: strength,
+                age: 0,
+                totalTransfer: 0,
+              });
+            }
+
+            return true;
           }
-          return Math.abs(hash);
+          return false;
+        }
+
+        // Apsimokimas per ryšius - pagrindinis naujas mechanizmas
+        processLinks(atoms) {
+          this.links = this.links.filter((link) => {
+            // Palaikome ir seną formatą (tik ID) ir naują (objektą)
+            const targetId = typeof link === 'object' ? link.id : link;
+            const targetAtom = atoms.find((a) => a.id === targetId);
+
+            if (!targetAtom) return false; // pašaliname neegzistuojančius ryšius
+
+            // Jei senas formatas, konvertuojame į naują
+            if (typeof link !== 'object') {
+              link = {
+                id: targetId,
+                type: 'legacy_connection',
+                strength: 0.7,
+                age: 0,
+                totalTransfer: 0,
+              };
+              // Pakeičiame seną formatą nauju
+              const linkIndex = this.links.findIndex(
+                (l) => (typeof l === 'object' ? l.id : l) === targetId
+              );
+              if (linkIndex >= 0) {
+                this.links[linkIndex] = link;
+              }
+            }
+
+            link.age++;
+            const distance = this.distanceTo(targetAtom);
+
+            // Apsimokimas pagal ryšio tipą ir atstumą
+            if (distance < 200) {
+              // ryšys aktyvus tik arti
+              const learningResult = this.performLearning(
+                targetAtom,
+                link,
+                distance
+              );
+
+              // Ryšio stiprėjimas arba silpnėjimas
+              if (learningResult.success) {
+                link.strength = Math.min(1.5, link.strength + 0.1);
+                link.totalTransfer += learningResult.transfer;
+              } else {
+                link.strength = Math.max(0.1, link.strength - 0.05);
+              }
+
+              // Seni neproduktyvūs ryšiai išnyksta
+              if (link.strength < 0.3 && link.age > 50) {
+                this.removeLinkBetween(targetAtom);
+                return false;
+              }
+
+              return true;
+            } else if (distance > 300) {
+              // Per toli - ryšys išnyksta
+              this.removeLinkBetween(targetAtom);
+              return false;
+            }
+
+            return true;
+          });
+        }
+
+        performLearning(targetAtom, link, distance) {
+          const learningRate = 0.1 * link.strength;
+          let success = false;
+          let transfer = 0;
+
+          switch (link.type) {
+            case 'energy_drain':
+              // Vampyras mokosi efektyviau siurbti
+              if (targetAtom.state[2] > this.state[2]) {
+                const energyDrain =
+                  Math.min(3, targetAtom.state[2] - this.state[2]) *
+                  learningRate *
+                  2;
+                this.state[2] += energyDrain;
+                targetAtom.state[2] -= energyDrain;
+                transfer = energyDrain;
+                success = energyDrain > 0.5;
+
+                // Mokosi geriau siurbti - padidėja efektyvumas
+                if (success) this.state[3] = Math.min(100, this.state[3] + 1);
+              }
+              break;
+
+            case 'cluster_bond':
+              // Mokosi koordinuoti judėjimą
+              const avgX = (this.state[0] + targetAtom.state[0]) / 2;
+              const avgY = (this.state[1] + targetAtom.state[1]) / 2;
+
+              // Mokosi judėti sinchroniškai
+              this.velocity[0] += (avgX - this.state[0]) * learningRate * 0.05;
+              this.velocity[1] += (avgY - this.state[1]) * learningRate * 0.05;
+
+              // Energijos dalinimasis
+              const energyDiff = this.state[2] - targetAtom.state[2];
+              if (Math.abs(energyDiff) > 5) {
+                const sharing = energyDiff * learningRate * 0.3;
+                this.state[2] -= sharing;
+                targetAtom.state[2] += sharing;
+                transfer = Math.abs(sharing);
+                success = true;
+              }
+              break;
+
+            case 'orbital_partnership':
+              // Mokasi optimalų orbitalinį atstumą
+              const optimalDistance = 70;
+              const distanceError = distance - optimalDistance;
+
+              if (Math.abs(distanceError) > 10) {
+                const correction = -distanceError * learningRate * 0.1;
+                const angle = Math.atan2(
+                  targetAtom.state[1] - this.state[1],
+                  targetAtom.state[0] - this.state[0]
+                );
+
+                this.velocity[0] += Math.cos(angle) * correction;
+                this.velocity[1] += Math.sin(angle) * correction;
+
+                transfer = Math.abs(correction);
+                success = Math.abs(distanceError) < 30;
+              }
+              break;
+
+            case 'defense_alliance':
+              // Mokosi koordinuoti gynybą
+              const threatDistance = 150;
+              const threats = targetAtom.findThreats
+                ? targetAtom.findThreats(atoms, threatDistance)
+                : [];
+
+              if (threats.length > 0) {
+                // Koordinuota gynyba - abiem padidėja gravitacijos jėga
+                this.state[3] = Math.min(
+                  100,
+                  this.state[3] + learningRate * 10
+                );
+
+                // Energijos suvienim kovai
+                const energyBoost = Math.min(5, targetAtom.state[2] * 0.1);
+                this.state[2] += energyBoost;
+                transfer = energyBoost;
+                success = true;
+              }
+              break;
+
+            case 'experimental_bond':
+              // Eksperimentinis apsimokimas - nepredictable
+              const experiment = Math.random();
+              if (experiment < 0.3) {
+                // Spalvų sinchronizacija
+                const colorDiff = Math.abs(this.state[4] - targetAtom.state[4]);
+                if (colorDiff > 30) {
+                  this.state[4] +=
+                    (targetAtom.state[4] - this.state[4]) * learningRate * 0.2;
+                  transfer = colorDiff * 0.1;
+                  success = true;
+                }
+              } else if (experiment < 0.6) {
+                // Greičio sinchronizacija
+                this.velocity[0] +=
+                  (targetAtom.velocity[0] - this.velocity[0]) *
+                  learningRate *
+                  0.1;
+                this.velocity[1] +=
+                  (targetAtom.velocity[1] - this.velocity[1]) *
+                  learningRate *
+                  0.1;
+                success = true;
+                transfer = 1;
+              }
+              break;
+          }
+
+          return { success, transfer };
+        }
+
+        removeLinkBetween(targetAtom) {
+          // Pašaliname ryšį iš abiejų pusių
+          this.links = this.links.filter((link) => {
+            const linkId = typeof link === 'object' ? link.id : link;
+            return linkId !== targetAtom.id;
+          });
+
+          targetAtom.links = targetAtom.links.filter((link) => {
+            const linkId = typeof link === 'object' ? link.id : link;
+            return linkId !== this.id;
+          });
         }
 
         // Vizualinės savybės pagal state[]
@@ -747,10 +1138,11 @@
             });
           }
 
-          // Piešiame ryšius (jei egzistuoja)
+          // Piešiame ryšius su stiprumo indikacija
           this.atoms.forEach((atom) => {
-            atom.links.forEach((linkId) => {
-              const target = this.atoms.find((a) => a.id === linkId);
+            atom.links.forEach((link) => {
+              const targetId = typeof link === 'object' ? link.id : link;
+              const target = this.atoms.find((a) => a.id === targetId);
               if (target) {
                 const line = document.createElementNS(
                   'http://www.w3.org/2000/svg',
@@ -760,9 +1152,27 @@
                 line.setAttribute('y1', atom.state[1]);
                 line.setAttribute('x2', target.state[0]);
                 line.setAttribute('y2', target.state[1]);
-                line.setAttribute('stroke', atom.getColor());
-                line.setAttribute('stroke-width', '1');
-                line.setAttribute('opacity', '0.4');
+
+                // Spalva pagal ryšio tipą
+                const linkType =
+                  typeof link === 'object' ? link.type : 'legacy_connection';
+                line.setAttribute('stroke', this.getLinkTypeColor(linkType));
+
+                // Storumas pagal stiprumą
+                const strength = typeof link === 'object' ? link.strength : 0.7;
+                line.setAttribute('stroke-width', Math.max(0.5, strength * 3));
+                line.setAttribute(
+                  'opacity',
+                  Math.min(0.9, 0.3 + strength * 0.6)
+                );
+
+                // Animacija jei aktyvus apsimokimas
+                if (typeof link === 'object' && link.totalTransfer > 10) {
+                  line.setAttribute('stroke-dasharray', '5,5');
+                  line.innerHTML =
+                    '<animate attributeName="stroke-dashoffset" values="0;10" dur="1s" repeatCount="indefinite"/>';
+                }
+
                 canvas.appendChild(line);
               }
             });
@@ -847,6 +1257,21 @@
           this.stats[`${decisionType}Actions`]++;
         }
 
+        getLinkTypeColor(linkType) {
+          const linkColors = {
+            energy_drain: '#ff4757', // raudona - vampyriškas
+            cluster_bond: '#3742fa', // mėlyna - grupinis
+            orbital_partnership: '#ffa502', // oranžinė - orbitinis
+            defense_alliance: '#2ed573', // žalia - gynybinis
+            experimental_bond: '#ff6b9d', // rožinė - eksperimentinis
+            flow_connection: '#70a1ff', // šviesiai mėlyna - srautas
+            orbital_capture: '#5352ed', // tamsiai mėlyna - gravitacinis
+            boundary_protection: '#ff9f43', // geltona - apsauginis
+            legacy_connection: '#747d8c', // pilka - senas
+          };
+          return linkColors[linkType] || '#747d8c';
+        }
+
         updateUI() {
           // Statistikų atnaujinimas
           document.getElementById('deterministicActions').textContent =
@@ -863,17 +1288,28 @@
           document.getElementById('avgEnergy').textContent =
             avgEnergy.toFixed(1);
 
-          // Aktyvūs ryšiai
+          // Aktyvūs ryšiai su detalėmis
           const totalLinks = this.atoms.reduce(
             (sum, atom) => sum + atom.links.length,
             0
           );
-          document.getElementById('activeLinks').textContent = totalLinks;
+          const strongLinks = this.atoms.reduce((sum, atom) => {
+            return (
+              sum +
+              atom.links.filter(
+                (link) => typeof link === 'object' && link.strength > 1.0
+              ).length
+            );
+          }, 0);
+          document.getElementById(
+            'activeLinks'
+          ).innerHTML = `${totalLinks}<br><small>${strongLinks} stiprūs</small>`;
 
           // Sistemos informacija
           const systemInfo = document.getElementById('systemInfo');
           const energyVariance = this.calculateEnergyVariance();
           const movementEnergy = this.calculateMovementEnergy();
+          const learningActivity = this.calculateLearningActivity();
 
           systemInfo.innerHTML = `
                     <div style="font-size: 11px; margin-bottom: 8px;">
@@ -887,6 +1323,11 @@
                         )}
                     </div>
                     <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>🧠 Apsimokimo aktyvumas:</strong> ${learningActivity.toFixed(
+                          1
+                        )}%
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 8px;">
                         <strong>⚛️ Atomų skaičius:</strong> ${this.atoms.length}
                     </div>
                     <div style="font-size: 11px; margin-bottom: 8px;">
@@ -896,50 +1337,85 @@
                     </div>
                 `;
 
-          // Top atomų sąrašas
+          // Top atomų sąrašas su ryšių informacija
           const atomsList = document.getElementById('atomsList');
           const topAtoms = [...this.atoms]
             .sort((a, b) => b.state[2] - a.state[2])
             .slice(0, 8);
 
           atomsList.innerHTML = topAtoms
-            .map(
-              (atom) => `
-                    <div class="atom-info">
-                        <div style="display: flex; align-items: center; margin-bottom: 5px;">
-                            <strong>Atomas ${atom.id}</strong>
-                            <span style="margin-left: auto; font-size: 14px;">${this.getMetadataIcon(
-                              atom.metadata
-                            )}</span>
-                        </div>
-                        <div class="state-display">
-                            <div class="state-val state-x">X: ${atom.state[0].toFixed(
-                              0
-                            )}</div>
-                            <div class="state-val state-y">Y: ${atom.state[1].toFixed(
-                              0
-                            )}</div>
-                            <div class="state-val state-energy">E: ${atom.state[2].toFixed(
-                              0
-                            )}</div>
-                        </div>
-                        <div class="links-display">
-                            Ryšiai: ${
-                              atom.links.length
-                            } | Gravitacija: ${atom.state[3].toFixed(1)}
-                        </div>
-                        <div class="metadata-display">
-                            ${atom.metadata} (${atom.lastDecisionType})
-                        </div>
-                        <div style="font-size: 9px; color: #aaa; margin-top: 4px;">
-                            Amžius: ${atom.age} | Adaptacijos: ${
+            .map((atom) => {
+              const strongLinks = atom.links.filter(
+                (link) => typeof link === 'object' && link.strength > 1.0
+              );
+              const totalTransfer = atom.links.reduce(
+                (sum, link) =>
+                  sum +
+                  (typeof link === 'object' ? link.totalTransfer || 0 : 0),
+                0
+              );
+
+              return `
+                        <div class="atom-info">
+                            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                                <strong>Atomas ${atom.id}</strong>
+                                <span style="margin-left: auto; font-size: 14px;">${this.getMetadataIcon(
+                                  atom.metadata
+                                )}</span>
+                            </div>
+                            <div class="state-display">
+                                <div class="state-val state-x">X: ${atom.state[0].toFixed(
+                                  0
+                                )}</div>
+                                <div class="state-val state-y">Y: ${atom.state[1].toFixed(
+                                  0
+                                )}</div>
+                                <div class="state-val state-energy">E: ${atom.state[2].toFixed(
+                                  0
+                                )}</div>
+                            </div>
+                            <div class="links-display">
+                                Ryšiai: ${atom.links.length} | Stiprūs: ${
+                strongLinks.length
+              }
+                            </div>
+                            <div class="links-display" style="font-size: 9px;">
+                                Transfer: ${totalTransfer.toFixed(
+                                  1
+                                )} | G: ${atom.state[3].toFixed(1)}
+                            </div>
+                            <div class="metadata-display">
+                                ${atom.metadata} (${atom.lastDecisionType})
+                            </div>
+                            <div style="font-size: 9px; color: #aaa; margin-top: 4px;">
+                                Amžius: ${atom.age} | Adaptacijos: ${
                 atom.adaptationCount
               }
+                            </div>
                         </div>
-                    </div>
-                `
-            )
+                    `;
+            })
             .join('');
+        }
+
+        calculateLearningActivity() {
+          const totalLinks = this.atoms.reduce(
+            (sum, atom) => sum + atom.links.length,
+            0
+          );
+          const activeLinks = this.atoms.reduce((sum, atom) => {
+            return (
+              sum +
+              atom.links.filter(
+                (link) =>
+                  typeof link === 'object' &&
+                  link.totalTransfer > 0 &&
+                  link.age < 100
+              ).length
+            );
+          }, 0);
+
+          return totalLinks > 0 ? (activeLinks / totalLinks) * 100 : 0;
         }
 
         calculateEnergyVariance() {
