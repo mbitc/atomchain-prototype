@@ -1,199 +1,467 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="lt">
   <head>
-    <meta charset="UTF-8" />
-    <title>AtomChain Interactive Prototype</title>
+    <meta charset="utf-8" />
+    <title>AtomChain — per-atom intervals + SVG</title>
     <style>
       body {
-        font-family: monospace;
-        padding: 20px;
+        font-family: Arial;
+        margin: 12px;
       }
-      .atom {
-        margin-bottom: 15px;
+      #controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      #svgWrap {
         border: 1px solid #ccc;
-        padding: 10px;
+        width: 100%;
+        height: 640px;
+        background: #fafafa;
       }
-      input,
-      select {
-        margin-right: 5px;
+      #log {
+        height: 140px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        padding: 6px;
+        font-family: monospace;
+        background: #fff;
       }
-      button {
-        margin-left: 5px;
+      .btn {
+        padding: 6px 8px;
+      }
+      .small {
+        font-size: 12px;
+        color: #444;
       }
     </style>
   </head>
   <body>
-    <h1>AtomChain Interactive Prototype</h1>
+    <h2>AtomChain — per-atom intervals + SVG vizualizacija</h2>
+    <div id="controls">
+      <button id="startAll" class="btn">Start all</button>
+      <button id="stopAll" class="btn">Stop all</button>
+      <button id="resetBtn" class="btn">Reset</button>
+      <div class="small">
+        Paspausk ant atomo, kad redaguotum `state` (csv), `metadata` (komandos,
+        comma-separated) ir `links` (target:weight, comma)
+      </div>
+    </div>
 
-    <h2>Create New Atom</h2>
-    State (comma separated):
-    <input type="text" id="new-state" value="0,0,0" /> Metadata:
-    <input type="text" id="new-meta" value="" />
-    <button onclick="createNewAtom()">Create Atom</button>
+    <div id="svgWrap">
+      <svg id="svgCanvas" width="100%" height="100%"></svg>
+    </div>
 
-    <h2>Link Atoms</h2>
-    Source:
-    <select id="link-source"></select>
-    Target:
-    <select id="link-target"></select>
-    <button onclick="linkSelectedAtoms()">Link</button>
-
-    <div id="atoms-container"></div>
-    <div id="output"></div>
+    <h4>Log</h4>
+    <div id="log"></div>
 
     <script>
-      class Atom {
-        constructor(id, state, metadata) {
-          this.id = id;
-          this.state = state;
-          this.links = [];
-          this.metadata = metadata;
-        }
+      // ================= CONFIG =================
+      const ATOM_COUNT = 12;
+      const WIDTH = 1000;
+      const HEIGHT = 600;
+      const R_BASE = 14; // base radius
+      // ==========================================
 
-        spawnNext(idCounter, atoms) {
-          if (
-            this.metadata.includes('spawn') &&
-            !atoms.find((a) => a.id === `atom-${idCounter}`)
-          ) {
-            const newAtom = new Atom(`atom-${idCounter}`, [...this.state], '');
-            log(`${this.id} spawned ${newAtom.id}`);
-            return newAtom;
-          }
-          return null;
-        }
-
-        linkAtoms(atoms) {
-          if (this.metadata.includes('link-next')) {
-            // išskirti atomo numerį iš id, pvz. "atom-5" → 5
-            const currentId = parseInt(this.id.replace('atom-', ''));
-            const nextAtom = atoms.find(
-              (a) => parseInt(a.id.replace('atom-', '')) === currentId + 1
-            );
-
-            if (nextAtom && !this.links.includes(nextAtom.id)) {
-              this.links.push(nextAtom.id);
-              log(`${this.id} linked to ${nextAtom.id}`);
-            }
-          }
-        }
-
-        applyOperator(index, value) {
-          if (index < this.state.length) {
-            this.state[index] += value;
-            log(`${this.id} state[${index}] changed by ${value}`);
-          }
-        }
-      }
-
-      // --- Pagalbinės funkcijos ---
-      const atoms = [];
-      let idCounter = 1;
-      const container = document.getElementById('atoms-container');
-      const output = document.getElementById('output');
+      const svg = document.getElementById('svgCanvas');
+      const logEl = document.getElementById('log');
 
       function log(msg) {
-        const div = document.createElement('div');
-        div.textContent = msg;
-        output.appendChild(div);
+        const t = new Date().toLocaleTimeString();
+        logEl.textContent += `[${t}] ${msg}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
       }
 
-      function renderAtoms() {
-        container.innerHTML = '';
-        const sourceSelect = document.getElementById('link-source');
-        const targetSelect = document.getElementById('link-target');
-        sourceSelect.innerHTML = '';
-        targetSelect.innerHTML = '';
+      // Atom model
+      class Atom {
+        constructor(id, state = [0, 0, 0], metadata = '') {
+          this.id = id; // 'atom-1'
+          this.state = state.slice(); // array of numbers
+          this.links = []; // [{id:'atom-2', weight:3}, ...]
+          this.metadata = metadata; // comma separated commands
+          // visual coords initialized later
+          this.x = 0;
+          this.y = 0;
+          this._intervalHandle = null; // per-atom interval
+        }
 
+        // helper: parse metadata tokens array
+        getMetaTokens() {
+          if (!this.metadata) return [];
+          return this.metadata
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+
+        // apply a single op token deterministically
+        processToken(token, atomsRef, idCounterRef) {
+          // tokens: interval:ms | link-next | feed-i:v | drain-i:v | mirror | spawn | set_link:atom-3:2 | inc_link:atom-3:1 | dec_link:atom-3:1
+          if (token.startsWith('interval:')) {
+            // nothing here — interval handled by scheduler
+            return;
+          }
+          if (token === 'link-next') {
+            // link to next by numeric id
+            const current = parseInt(this.id.replace('atom-', ''), 10);
+            const nextId = `atom-${current + 1}`;
+            const target = atomsRef.find((a) => a.id === nextId);
+            if (target && !this.links.find((l) => l.id === nextId)) {
+              this.links.push({ id: nextId, weight: 1 });
+              log(`${this.id} -> linked to ${nextId}`);
+            }
+            return;
+          }
+          if (token.startsWith('feed-')) {
+            // feed-i:v  (increase target.state[i] by v * weight for each link)
+            // syntax: feed-0:2
+            const part = token.slice('feed-'.length);
+            const [idxStr, valStr] = part.split(':');
+            const idx = parseInt(idxStr, 10);
+            const val = parseInt(valStr, 10) || 0;
+            this.links.forEach((l) => {
+              const target = atomsRef.find((a) => a.id === l.id);
+              if (target) {
+                target.state[idx] =
+                  (target.state[idx] || 0) + val * (l.weight || 1);
+                log(
+                  `${this.id} fed ${val * (l.weight || 1)} to ${
+                    l.id
+                  } state[${idx}]`
+                );
+              }
+            });
+            return;
+          }
+          if (token.startsWith('drain-')) {
+            // drain-i:v  (reduce own state[i] by v)
+            const part = token.slice('drain-'.length);
+            const [idxStr, valStr] = part.split(':');
+            const idx = parseInt(idxStr, 10);
+            const val = parseInt(valStr, 10) || 0;
+            this.state[idx] = (this.state[idx] || 0) - val;
+            if (this.state[idx] < 0) this.state[idx] = 0;
+            log(`${this.id} drained ${val} from state[${idx}]`);
+            return;
+          }
+          if (token === 'mirror') {
+            // copy own state to all linked atoms (overwrite)
+            this.links.forEach((l) => {
+              const target = atomsRef.find((a) => a.id === l.id);
+              if (target) {
+                target.state = this.state.slice();
+                log(`${this.id} mirrored state to ${l.id}`);
+              }
+            });
+            return;
+          }
+          if (token === 'spawn') {
+            // create new atom with same state (idCounterRef is object with value property)
+            const newId = `atom-${idCounterRef.value}`;
+            const newAtom = new Atom(newId, this.state.slice(), '');
+            // place near parent
+            newAtom.x = Math.min(WIDTH - 40, this.x + 30);
+            newAtom.y = Math.min(HEIGHT - 40, this.y + 30);
+            idCounterRef.value++;
+            atomsRef.push(newAtom);
+            log(`${this.id} spawned ${newId}`);
+            return;
+          }
+          if (token.startsWith('set_link:')) {
+            // set_link:atom-3:2  => set weight to 2
+            const rest = token.slice('set_link:'.length);
+            const [targetId, wStr] = rest.split(':');
+            const w = parseFloat(wStr) || 0;
+            let l = this.links.find((x) => x.id === targetId);
+            if (l) l.weight = w;
+            else this.links.push({ id: targetId, weight: w });
+            log(`${this.id} set_link ${targetId} => ${w}`);
+            return;
+          }
+          if (token.startsWith('inc_link:')) {
+            const rest = token.slice('inc_link:'.length);
+            const [targetId, byStr] = rest.split(':');
+            const by = parseFloat(byStr) || 1;
+            let l = this.links.find((x) => x.id === targetId);
+            if (l) l.weight += by;
+            else this.links.push({ id: targetId, weight: by });
+            log(`${this.id} inc_link ${targetId} by ${by}`);
+            return;
+          }
+          if (token.startsWith('dec_link:')) {
+            const rest = token.slice('dec_link:'.length);
+            const [targetId, byStr] = rest.split(':');
+            const by = parseFloat(byStr) || 1;
+            let l = this.links.find((x) => x.id === targetId);
+            if (l) {
+              l.weight = Math.max(0, l.weight - by);
+              if (l.weight === 0) {
+                /* keep but zero weight */
+              }
+            }
+            log(`${this.id} dec_link ${targetId} by ${by}`);
+            return;
+          }
+          // unknown token -> ignore
+        }
+
+        // single atomic iterate call (deterministic): process tokens in order
+        iterateOnce(atomsRef, idCounterRef) {
+          const tokens = this.getMetaTokens();
+          for (const t of tokens) {
+            this.processToken(t, atomsRef, idCounterRef);
+          }
+          // normalization: remove links with non-existent targets
+          this.links = this.links.filter((l) =>
+            atomsRef.some((a) => a.id === l.id)
+          );
+        }
+
+        // start per-atom interval (ms)
+        startInterval(atomsRef, idCounterRef) {
+          // parse interval token if present
+          const tokens = this.getMetaTokens();
+          const intervalToken = tokens.find((tok) =>
+            tok.startsWith('interval:')
+          );
+          const ms = intervalToken
+            ? parseInt(intervalToken.split(':')[1], 10)
+            : 1000;
+          const safeMs = !isNaN(ms) && ms > 0 ? ms : 1000;
+          this._intervalHandle = setInterval(() => {
+            this.iterateOnce(atomsRef, idCounterRef);
+            drawAll();
+          }, safeMs);
+        }
+
+        stopInterval() {
+          if (this._intervalHandle) clearInterval(this._intervalHandle);
+          this._intervalHandle = null;
+        }
+      }
+
+      // global state
+      let atoms = [];
+      let idCounter = 1;
+      const idCounterRef = { value: null }; // used so spawn inside atom can modify external counter
+
+      // initialize atoms (12)
+      const presets = [
+        { state: [1, 0, 0], meta: 'interval:800,link-next,feed-1:1' },
+        { state: [0, 1, 0], meta: 'interval:1200,drain-1:1,link-next' },
+        { state: [0, 0, 1], meta: 'interval:1000,mirror' },
+        { state: [2, 0, 1], meta: 'interval:1500,spawn,feed-2:2' },
+        { state: [1, 1, 0], meta: 'interval:900,link-next,inc_link:atom-6:1' },
+        { state: [0, 2, 1], meta: 'interval:1100,set_link:atom-1:2' },
+        { state: [3, 0, 0], meta: 'interval:1400,feed-0:1,drain-0:1' },
+        { state: [0, 3, 1], meta: 'interval:700,mirror' },
+        { state: [1, 5, 3], meta: 'interval:1600,spawn' },
+        { state: [2, 2, 0], meta: 'interval:1300,link-next' },
+        { state: [5, 1, 2], meta: 'interval:1000,feed-2:1' },
+        { state: [1, 2, 3], meta: 'interval:2000,drain-2:2' },
+      ];
+
+      function initAtoms() {
+        atoms = [];
+        idCounter = 1;
+        presets.forEach((p, i) => {
+          const a = new Atom(`atom-${i + 1}`, p.state, p.meta);
+          a.x = 80 + (i % 6) * 140;
+          a.y = 80 + Math.floor(i / 6) * 220;
+          atoms.push(a);
+          idCounter = i + 2;
+        });
+        idCounterRef.value = idCounter;
+      }
+
+      // SVG drawing
+      function drawAll() {
+        // set canvas size explicit for coordinates
+        svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        const SCALE = 80; // vieno state vienetas = 80px
+
+        function getDrawCoords(atom) {
+          return {
+            x: (atom.state[0] || 0) * SCALE,
+            y: (atom.state[1] || 0) * SCALE + 100,
+          };
+        }
+
+        // draw links (underneath)
         atoms.forEach((atom) => {
-          const div = document.createElement('div');
-          div.className = 'atom';
-          div.innerHTML = `<strong>${
-            atom.id
-          }</strong><br>State: ${atom.state.join(', ')}<br>
-      Links: [${atom.links.join(', ')}]<br>
-      Metadata: <input type="text" value="${atom.metadata}" id="meta-${
-            atom.id
-          }"/>
-      <button onclick="updateAtom('${atom.id}')">Update</button>`;
+          const aPos = getDrawCoords(atom);
+          atom.links.forEach((l) => {
+            const target = atoms.find((a) => a.id === l.id);
+            if (!target) return;
 
-          atom.state.forEach((v, i) => {
-            const btnInc = document.createElement('button');
-            btnInc.textContent = `+1 state[${i}]`;
-            btnInc.onclick = () => {
-              atom.applyOperator(i, 1);
-              renderAtoms();
-            };
-            div.appendChild(btnInc);
+            const tPos = getDrawCoords(target);
+
+            const line = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'line'
+            );
+            line.setAttribute('x1', aPos.x);
+            line.setAttribute('y1', aPos.y);
+            line.setAttribute('x2', tPos.x);
+            line.setAttribute('y2', tPos.y);
+
+            const weight = l.weight || 0.5;
+            const w = Math.max(0.5, Math.min(8, weight));
+            line.setAttribute('stroke-width', w);
+
+            const alpha = Math.min(1, weight / 6 + 0.1);
+            line.setAttribute('stroke', `rgba(40,80,200,${alpha})`);
+            svg.appendChild(line);
+          });
+        });
+
+        // draw atoms (top)
+        atoms.forEach((atom) => {
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+          // circle radius from state sum
+          const sumState = atom.state.reduce((s, n) => s + (Number(n) || 0), 0);
+          const r = R_BASE + Math.min(18, sumState * 2);
+
+          // mastelis koordinatėms
+          const drawX = (atom.state[0] || 0) * SCALE;
+          const drawY = (atom.state[1] || 0) * SCALE + 100;
+
+          // spalva iš state[2]
+          if (!atom.color) atom.color = { r: 100, g: 150, b: 200 }; // default
+          if (atom.state[2] !== 0) {
+            const channels = ['r', 'g', 'b'];
+            const c = channels[Math.floor(Math.random() * 3)];
+            atom.color[c] = Math.min(
+              255,
+              Math.max(0, atom.color[c] + atom.state[2] * 5)
+            );
+          }
+          const fillColor = `rgb(${atom.color.r},${atom.color.g},${atom.color.b})`;
+
+          const circle = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'circle'
+          );
+          circle.setAttribute('cx', drawX);
+          circle.setAttribute('cy', drawY);
+          circle.setAttribute('r', r);
+          circle.setAttribute('fill', fillColor);
+          circle.setAttribute('stroke', '#222');
+          circle.setAttribute('stroke-width', '2');
+          circle.style.cursor = 'pointer';
+
+          circle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            editAtomDialog(atom);
           });
 
-          container.appendChild(div);
+          g.appendChild(circle);
 
-          // Update selects for linking
-          const opt1 = document.createElement('option');
-          opt1.value = atom.id;
-          opt1.text = atom.id;
-          sourceSelect.appendChild(opt1);
-          const opt2 = document.createElement('option');
-          opt2.value = atom.id;
-          opt2.text = atom.id;
-          targetSelect.appendChild(opt2);
+          const text = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'text'
+          );
+          text.setAttribute('x', drawX);
+          text.setAttribute('y', drawY + 4);
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('font-size', '10');
+          text.setAttribute('fill', '#fff');
+          text.textContent = atom.id.replace('atom-', '');
+          g.appendChild(text);
+
+          const st = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'text'
+          );
+          st.setAttribute('x', drawX);
+          st.setAttribute('y', drawY + r + 12);
+          st.setAttribute('text-anchor', 'middle');
+          st.setAttribute('font-size', '10');
+          st.setAttribute('fill', '#333');
+          st.textContent = `[${(atom.state || [])
+            .map((n) => Math.round(n))
+            .join(',')}]`;
+          g.appendChild(st);
+
+          svg.appendChild(g);
         });
       }
 
-      // --- Vartotojo funkcijos ---
-      function updateAtom(id) {
-        const atom = atoms.find((a) => a.id === id);
-        if (atom) {
-          const metaInput = document.getElementById(`meta-${id}`);
-          atom.metadata = metaInput.value;
-          log(`${atom.id} metadata updated to "${atom.metadata}"`);
-          simulateIteration();
+      // edit dialog (prompt-based minimal)
+      function editAtomDialog(atom) {
+        const stateStr = prompt(
+          `Edit state[] (comma) for ${atom.id}`,
+          (atom.state || []).join(',')
+        );
+        if (stateStr !== null) {
+          atom.state = stateStr.split(',').map((s) => Number(s.trim()) || 0);
         }
-      }
-
-      function createNewAtom() {
-        const stateStr = document.getElementById('new-state').value;
-        const metadata = document.getElementById('new-meta').value;
-        const state = stateStr.split(',').map((s) => parseInt(s.trim()));
-        const atom = new Atom(`atom-${idCounter++}`, state, metadata);
-        atoms.push(atom);
-        log(`Created ${atom.id}`);
-        renderAtoms();
-      }
-
-      function linkSelectedAtoms() {
-        const sourceId = document.getElementById('link-source').value;
-        const targetId = document.getElementById('link-target').value;
-        if (sourceId && targetId && sourceId !== targetId) {
-          const sourceAtom = atoms.find((a) => a.id === sourceId);
-          if (sourceAtom && !sourceAtom.links.includes(targetId)) {
-            sourceAtom.links.push(targetId);
-            log(`${sourceId} linked to ${targetId}`);
-            renderAtoms();
-          }
+        const linksStr = prompt(
+          `Edit links (target:weight, comma) for ${atom.id}`,
+          (atom.links || []).map((l) => `${l.id}:${l.weight}`).join(',')
+        );
+        if (linksStr !== null) {
+          atom.links = [];
+          linksStr
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((pair) => {
+              const [t, w] = pair.split(':').map((x) => x.trim());
+              if (t) atom.links.push({ id: t, weight: Number(w) || 1 });
+            });
         }
+        const metaStr = prompt(
+          `Edit metadata (comma tokens) for ${atom.id}`,
+          atom.metadata || ''
+        );
+        if (metaStr !== null) atom.metadata = metaStr;
+        // restart its interval with new interval if changed
+        atom.stopInterval();
+        atom.startInterval(atoms, idCounterRef);
+        drawAll();
+        log(`Edited ${atom.id}`);
       }
 
-      // --- Deterministinė iteracija ---
-      function simulateIteration() {
-        const newAtoms = [];
-        atoms.forEach((atom) => {
-          atom.linkAtoms(atoms);
-          const spawned = atom.spawnNext(idCounter, atoms.concat(newAtoms));
-          if (spawned) {
-            newAtoms.push(spawned);
-            idCounter++;
-          }
-        });
-        atoms.push(...newAtoms);
-        renderAtoms();
+      // start/stop all per-atom intervals
+      function startAll() {
+        atoms.forEach((a) => a.startInterval(atoms, idCounterRef));
+        log('Started all atom intervals');
+      }
+      function stopAll() {
+        atoms.forEach((a) => a.stopInterval());
+        log('Stopped all atom intervals');
       }
 
-      // --- Inicializacija ---
-      atoms.push(new Atom(`atom-${idCounter++}`, [1, 0, 0], 'spawn,link-next'));
-      atoms.push(new Atom(`atom-${idCounter++}`, [0, 1, 0], 'link-next'));
-      atoms.push(new Atom(`atom-${idCounter++}`, [0, 0, 1], ''));
-      simulateIteration();
+      // reset demo and start
+      function resetDemo() {
+        // stop any running intervals
+        stopAll();
+        initAtoms();
+        drawAll();
+        log('Reset demo');
+      }
+
+      // init
+      initAtoms();
+      drawAll();
+
+      // wire buttons
+      document
+        .getElementById('startAll')
+        .addEventListener('click', () => startAll());
+      document
+        .getElementById('stopAll')
+        .addEventListener('click', () => stopAll());
+      document
+        .getElementById('resetBtn')
+        .addEventListener('click', () => resetDemo());
+
+      // start automatically
+      startAll();
     </script>
   </body>
 </html>
