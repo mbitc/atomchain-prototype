@@ -73,6 +73,30 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
+      function determineMetadataForNewAtom(newAtom, atoms) {
+        // Pradinis metadata
+        let meta = '';
+
+        // Pavyzdinė taisyklė: jei naujas atomas turi būti susijęs su atomu 1 ar 2, pridedam 'link-next'
+        const linkedIds = atoms
+          .filter((a) => a.links.includes(newAtom.id))
+          .map((a) => a.id);
+
+        if (linkedIds.length > 0) {
+          meta += 'link-next';
+        }
+
+        // Kitas pavyzdys: jei yra bent vienas atomas su spawn metadata, naujas paveldi 'spawn'
+        if (atoms.some((a) => a.metadata.includes('spawn'))) {
+          if (meta) meta += ',';
+          meta += 'spawn';
+        }
+
+        // Galima pridėti kitų taisyklių pagal atomų kombinacijas
+        newAtom.metadata = meta;
+        log(`${newAtom.id} metadata auto-set to "${newAtom.metadata}"`);
+      }
+
       // Atom model
       class Atom {
         constructor(id, state = [0, 0, 0], metadata = '') {
@@ -160,6 +184,7 @@
             // create new atom with same state (idCounterRef is object with value property)
             const newId = `atom-${idCounterRef.value}`;
             const newAtom = new Atom(newId, this.state.slice(), '');
+            determineMetadataForNewAtom(newAtom, atomsRef);
             // place near parent
             newAtom.x = Math.min(WIDTH - 40, this.x + 30);
             newAtom.y = Math.min(HEIGHT - 40, this.y + 30);
