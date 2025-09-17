@@ -64,12 +64,16 @@
 
         linkAtoms(atoms) {
           if (this.metadata.includes('link-next')) {
-            atoms.forEach((a) => {
-              if (a.id !== this.id && !this.links.includes(a.id)) {
-                this.links.push(a.id);
-                log(`${this.id} linked to ${a.id}`);
-              }
-            });
+            // išskirti atomo numerį iš id, pvz. "atom-5" → 5
+            const currentId = parseInt(this.id.replace('atom-', ''));
+            const nextAtom = atoms.find(
+              (a) => parseInt(a.id.replace('atom-', '')) === currentId + 1
+            );
+
+            if (nextAtom && !this.links.includes(nextAtom.id)) {
+              this.links.push(nextAtom.id);
+              log(`${this.id} linked to ${nextAtom.id}`);
+            }
           }
         }
 
