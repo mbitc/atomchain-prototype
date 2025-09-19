@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="lt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AtomChain Mobile</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: radial-gradient(circle at center, #0a0a0f, #1a1a2e);
+        color: white;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 100vw;
+      }
+
+      .header {
+        text-align: center;
+        padding: 10px;
+        background: rgba(15, 15, 35, 0.9);
+      }
+
+      .header h1 {
+        background: linear-gradient(45deg, #667eea, #ffd700);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: clamp(1.2em, 5vw, 2em);
+        margin: 0;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+        padding: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+        background: rgba(15, 15, 35, 0.8);
+      }
+
+      button {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        border: none;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 12px;
+        min-height: 40px;
+        touch-action: manipulation;
+      }
+
+      button:active {
+        transform: scale(0.95);
+        background: linear-gradient(45deg, #5a6fd8, #6a4190);
+      }
+
+      .main-viz {
+        width: 100%;
+        height: 60vh;
+        background: rgba(15, 15, 35, 0.9);
+        position: relative;
+        overflow: hidden;
+      }
+
+      #atomCanvas {
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(
+          circle at center,
+          rgba(15, 15, 35, 0.8),
+          rgba(0, 0, 0, 0.9)
+        );
+      }
+
+      .stats-mobile {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        padding: 10px;
+        background: rgba(15, 15, 35, 0.9);
+      }
+
+      .stat-card {
+        background: rgba(102, 126, 234, 0.2);
+        padding: 8px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 11px;
+      }
+
+      .stat-number {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #ffd700;
+      }
+
+      .task-section {
+        padding: 10px;
+        background: rgba(15, 15, 35, 0.8);
+      }
+
+      .task-buttons {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .task-btn {
+        background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+        padding: 10px;
+        font-size: 11px;
+        min-height: 40px;
+      }
+
+      .info-panel {
+        padding: 10px;
+        background: rgba(15, 15, 35, 0.9);
+        max-height: 200px;
+        overflow-y: auto;
+        font-size: 10px;
+      }
+
+      .atom-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px;
+        margin: 2px 0;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 5px;
+      }
+
+      .role-icon {
+        font-size: 16px;
+        margin-right: 5px;
+      }
+
+      .moving {
+        animation: pulse 1s ease-in-out infinite alternate;
+      }
+
+      @keyframes pulse {
+        from {
+          opacity: 0.6;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .status-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.8);
+        color: #ffd700;
+        padding: 5px;
+        text-align: center;
+        font-size: 12px;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="status-bar" id="statusBar">Sistema įsikrauna...</div>
+
+    <div class="container">
+      <div class="header">
+        <h1>⚛️ AtomChain Mobile</h1>
+        <p style="font-size: 12px">Funkcionalūs atomai su delegavimo sistema</p>
+      </div>
+
+      <div class="controls">
+        <button onclick="startSystem()">▶️ Start</button>
+        <button onclick="pauseSystem()">⏸️ Pause</button>
+        <button onclick="resetSystem()">🔄 Reset</button>
+        <button onclick="addRandomAtom()">➕ Add</button>
+        <button onclick="forceMovement()">🚀 Force Move</button>
+      </div>
+
+      <div class="main-viz">
+        <svg id="atomCanvas" viewBox="0 0 400 300">
+          <!-- Atomai piešiami čia -->
+        </svg>
+      </div>
+
+      <div class="stats-mobile">
+        <div class="stat-card">
+          <div class="stat-number" id="workerCount">0</div>
+          <div>👷 Workers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="routerCount">0</div>
+          <div>🔀 Routers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="collectorCount">0</div>
+          <div>📦 Collectors</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="generatorCount">0</div>
+          <div>🌱 Generators</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="activeLinks">0</div>
+          <div>🔗 Links</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="completedTasks">0</div>
+          <div>✅ Tasks</div>
+        </div>
+      </div>
+
+      <div class="task-section">
+        <h3 style="margin-bottom: 10px; font-size: 14px">🎯 Test Tasks</h3>
+        <div class="task-buttons">
+          <button class="task-btn" onclick="submitTask('compute')">
+            💻 Compute
+          </button>
+          <button class="task-btn" onclick="submitTask('analyze')">
+            📊 Analyze
+          </button>
+          <button class="task-btn" onclick="submitTask('store')">
+            💾 Store
+          </button>
+          <button class="task-btn" onclick="submitTask('supply')">
+            📦 Supply
+          </button>
+        </div>
+      </div>
+
+      <div class="info-panel">
+        <h4>⚛️ Active Atoms</h4>
+        <div id="atomsList"></div>
+      </div>
+    </div>
+
+    <script>
+      // Mobile optimized metadata
+      const MetadataPresets = {
+        worker: {
+          role: 'worker',
+          skills: ['compute', 'analyze'],
+          capacity: 1,
+          color: '#3498db',
+          icon: '👷',
+        },
+        router: {
+          role: 'router',
+          skills: ['delegate'],
+          capacity: 5,
+          color: '#e74c3c',
+          icon: '🔀',
+        },
+        generator: {
+          role: 'generator',
+          skills: ['spawn'],
+          capacity: 2,
+          color: '#2ecc71',
+          icon: '🌱',
+        },
+        collector: {
+          role: 'collector',
+          skills: ['store', 'supply'],
+          capacity: 3,
+          color: '#f39c12',
+          icon: '📦',
+        },
+      };
+
+      class Atom {
+        constructor(id, x = null, y = null, role = null) {
+          this.id = id;
+
+          // Mobile optimized coordinates (400x300 viewBox)
+          this.state = {
+            x: x || 50 + Math.random() * 300,
+            y: y || 50 + Math.random() * 200,
+            z: Math.random() * 50,
+            vx: (Math.random() - 0.5) * 20, // Much faster initial speed
+            vy: (Math.random() - 0.5) * 20,
+            vz: (Math.random() - 0.5) * 2,
+            ax: 0,
+            ay: 0,
+            az: 0,
+            spin: Math.random() * Math.PI,
+            charge: (Math.random() - 0.5) * 300,
+            mass: 1 + Math.random() * 4,
+          };
+
+          const roles = Object.keys(MetadataPresets);
+          const selectedRole =
+            role || roles[Math.floor(Math.random() * roles.length)];
+          this.metadata = { ...MetadataPresets[selectedRole] };
+          this.metadata.workload = 0;
+          this.metadata.efficiency = 0.5 + Math.random() * 0.5;
+          this.metadata.experience = 0;
+
+          this.links = {};
+          this.age = 0;
+          this.lastTaskTime = 0;
+          this.isMoving = true; // Force movement flag
+        }
+
+        canHandle(task) {
+          if (this.metadata.workload >= this.metadata.capacity) return false;
+          return this.metadata.skills.includes(task.type);
+        }
+
+        delegate(task) {
+          let bestLink = null;
+          let bestScore = -1;
+
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            const target = link.target;
+
+            if (target && target.canHandle(task)) {
+              const score =
+                link.strength *
+                target.metadata.efficiency *
+                (1 - target.metadata.workload / target.metadata.capacity);
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestLink = link;
+              }
+            }
+          }
+
+          if (bestLink) {
+            const result = bestLink.target.handleTask(task);
+            bestLink.usage++;
+            bestLink.lastUsed = Date.now();
+
+            if (result.success) {
+              bestLink.strength = Math.min(1.0, bestLink.strength + 0.1);
+            }
+
+            return {
+              success: true,
+              action: 'delegated',
+              from: this.id,
+              to: bestLink.target.id,
+              task: task.type,
+            };
+          }
+
+          return {
+            success: false,
+            action: 'delegation_failed',
+            from: this.id,
+            task: task.type,
+          };
+        }
+
+        handleTask(task) {
+          if (!this.canHandle(task)) {
+            const delegationResult = this.delegate(task);
+            if (delegationResult.success) {
+              return delegationResult;
+            } else {
+              return {
+                success: false,
+                action: 'rejected',
+                atom: this.id,
+                task: task.type,
+              };
+            }
+          }
+
+          this.metadata.workload++;
+          this.lastTaskTime = Date.now();
+
+          const success = Math.random() < this.metadata.efficiency;
+
+          if (success) {
+            this.metadata.experience++;
+            this.metadata.efficiency = Math.min(
+              1.0,
+              this.metadata.efficiency + 0.01
+            );
+            this.performRoleAction(task);
+
+            // Task success triggers movement boost
+            this.state.vx += (Math.random() - 0.5) * 10;
+            this.state.vy += (Math.random() - 0.5) * 10;
+          }
+
+          setTimeout(() => {
+            this.metadata.workload = Math.max(0, this.metadata.workload - 1);
+          }, 1000);
+
+          return {
+            success: success,
+            action: success ? 'completed' : 'failed',
+            atom: this.id,
+            task: task.type,
+          };
+        }
+
+        performRoleAction(task) {
+          switch (this.metadata.role) {
+            case 'worker':
+              this.state.charge += 20;
+              this.state.spin += 0.2;
+              // Workers get speed boost
+              this.state.vx += (Math.random() - 0.5) * 5;
+              this.state.vy += (Math.random() - 0.5) * 5;
+              break;
+            case 'router':
+              this.optimizeLinks();
+              // Routers do circular motion
+              const angle = this.age * 0.1;
+              this.state.vx += Math.cos(angle) * 3;
+              this.state.vy += Math.sin(angle) * 3;
+              break;
+            case 'generator':
+              if (Math.random() < 0.1 && window.atomSystem) {
+                window.atomSystem.handleSpawnRequest(this);
+              }
+              // Generators jump randomly
+              this.state.vx += (Math.random() - 0.5) * 15;
+              this.state.vy += (Math.random() - 0.5) * 15;
+              break;
+            case 'collector':
+              this.state.mass += 0.2;
+              this.shareResources();
+              break;
+          }
+        }
+
+        optimizeLinks() {
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.strength < 0.3 && link.age > 50) {
+              this.removeLink(linkId);
+            }
+          }
+        }
+
+        shareResources() {
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.target && link.target.state.mass < this.state.mass) {
+              const transfer = (this.state.mass - link.target.state.mass) * 0.1;
+              this.state.mass -= transfer;
+              link.target.state.mass += transfer;
+            }
+          }
+        }
+
+        createLink(targetAtom, strength = 0.5, bidirectional = true) {
+          if (
+            !targetAtom ||
+            targetAtom.id === this.id ||
+            this.links[targetAtom.id]
+          )
+            return false;
+
+          this.links[targetAtom.id] = {
+            target: targetAtom,
+            strength: strength,
+            age: 0,
+            usage: 0,
+            lastUsed: Date.now(),
+            created: Date.now(),
+          };
+
+          if (bidirectional && !targetAtom.links[this.id]) {
+            targetAtom.createLink(this, strength, false);
+          }
+
+          return true;
+        }
+
+        removeLink(targetId) {
+          if (this.links[targetId]) {
+            delete this.links[targetId];
+            return true;
+          }
+          return false;
+        }
+
+        updatePhysics(atoms, deltaTime) {
+          this.age++;
+
+          // Force continuous movement
+          this.addContinuousMovement();
+
+          // Update link ages
+          for (let linkId in this.links) {
+            this.links[linkId].age++;
+          }
+
+          // Apply forces
+          this.applyForces(atoms);
+
+          // Update velocity and position with high speed multiplier
+          const speedMultiplier = 30; // Very fast for mobile
+          this.state.vx += this.state.ax * deltaTime * speedMultiplier;
+          this.state.vy += this.state.ay * deltaTime * speedMultiplier;
+
+          // Limit max speed
+          const maxSpeed = 80;
+          const currentSpeed = Math.sqrt(
+            this.state.vx * this.state.vx + this.state.vy * this.state.vy
+          );
+          if (currentSpeed > maxSpeed) {
+            this.state.vx = (this.state.vx / currentSpeed) * maxSpeed;
+            this.state.vy = (this.state.vy / currentSpeed) * maxSpeed;
+          }
+
+          // Update position
+          this.state.x += this.state.vx * deltaTime;
+          this.state.y += this.state.vy * deltaTime;
+
+          // Update spin based on movement
+          this.state.spin +=
+            (Math.abs(this.state.vx) + Math.abs(this.state.vy)) * 0.01;
+
+          // Damping
+          this.state.vx *= 0.97;
+          this.state.vy *= 0.97;
+
+          // Reset accelerations
+          this.state.ax = this.state.ay = 0;
+
+          // Boundary check (mobile screen size)
+          this.checkBoundaries();
+        }
+
+        addContinuousMovement() {
+          // Ensure atoms never stop moving
+          const minSpeed = 2;
+          const currentSpeed = Math.sqrt(
+            this.state.vx * this.state.vx + this.state.vy * this.state.vy
+          );
+
+          if (currentSpeed < minSpeed) {
+            const randomAngle = Math.random() * Math.PI * 2;
+            this.state.vx += Math.cos(randomAngle) * 5;
+            this.state.vy += Math.sin(randomAngle) * 5;
+          }
+
+          // Role-specific movement patterns
+          switch (this.metadata.role) {
+            case 'worker':
+              if (Math.random() < 0.05) {
+                this.state.vx += (Math.random() - 0.5) * 8;
+                this.state.vy += (Math.random() - 0.5) * 8;
+              }
+              break;
+            case 'router':
+              const routerAngle = this.age * 0.05;
+              this.state.vx += Math.cos(routerAngle) * 2;
+              this.state.vy += Math.sin(routerAngle) * 2;
+              break;
+            case 'collector':
+              if (Math.random() < 0.03) {
+                this.state.vx += (Math.random() - 0.5) * 4;
+                this.state.vy += (Math.random() - 0.5) * 4;
+              }
+              break;
+            case 'generator':
+              if (Math.random() < 0.02) {
+                this.state.vx += (Math.random() - 0.5) * 12;
+                this.state.vy += (Math.random() - 0.5) * 12;
+              }
+              break;
+          }
+        }
+
+        applyForces(atoms) {
+          // Inter-atom forces
+          atoms.forEach((other) => {
+            if (other.id === this.id) return;
+
+            const dx = other.state.x - this.state.x;
+            const dy = other.state.y - this.state.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 2 && distance < 100) {
+              const gravityForce =
+                ((this.state.mass * other.state.mass) / (distance * distance)) *
+                0.1;
+              const repulsionForce =
+                ((this.state.charge * other.state.charge) /
+                  (distance * distance)) *
+                0.05;
+              const netForce = gravityForce - repulsionForce;
+
+              this.state.ax += ((dx / distance) * netForce) / this.state.mass;
+              this.state.ay += ((dy / distance) * netForce) / this.state.mass;
+            }
+          });
+
+          // Link forces
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.target) {
+              const dx = link.target.state.x - this.state.x;
+              const dy = link.target.state.y - this.state.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+
+              const optimalDistance = 40;
+              if (distance > optimalDistance) {
+                const linkForce = link.strength * 0.2;
+                this.state.ax += (dx / distance) * linkForce;
+                this.state.ay += (dy / distance) * linkForce;
+              } else if (distance < 20) {
+                const pushForce = 0.1;
+                this.state.ax -= (dx / distance) * pushForce;
+                this.state.ay -= (dy / distance) * pushForce;
+              }
+            }
+          }
+        }
+
+        checkBoundaries() {
+          const margin = 20;
+          const bounce = 0.9;
+
+          if (this.state.x < margin) {
+            this.state.x = margin;
+            this.state.vx = Math.abs(this.state.vx) * bounce;
+          }
+          if (this.state.x > 380) {
+            this.state.x = 380;
+            this.state.vx = -Math.abs(this.state.vx) * bounce;
+          }
+          if (this.state.y < margin) {
+            this.state.y = margin;
+            this.state.vy = Math.abs(this.state.vy) * bounce;
+          }
+          if (this.state.y > 280) {
+            this.state.y = 280;
+            this.state.vy = -Math.abs(this.state.vy) * bounce;
+          }
+        }
+
+        getSize() {
+          return Math.max(
+            4,
+            Math.min(12, 4 + this.state.mass + this.metadata.experience * 0.3)
+          );
+        }
+
+        getColor() {
+          return this.metadata.color;
+        }
+
+        getOpacity() {
+          return Math.max(
+            0.6,
+            1 - (this.metadata.workload / this.metadata.capacity) * 0.2
+          );
+        }
+      }
+
+      class AtomSystem {
+        constructor() {
+          this.atoms = [];
+          this.running = false;
+          this.taskQueue = [];
+          this.taskLog = [];
+          this.stats = { completedTasks: 0, delegatedTasks: 0, failedTasks: 0 };
+          this.lastTime = Date.now();
+          this.updateInterval = null;
+
+          window.atomSystem = this;
+          this.initialize();
+        }
+
+        initialize() {
+          this.atoms = [];
+
+          // Create initial atoms with guaranteed movement
+          this.atoms.push(new Atom(0, 100, 80, 'worker'));
+          this.atoms.push(new Atom(1, 200, 80, 'router'));
+          this.atoms.push(new Atom(2, 300, 80, 'collector'));
+          this.atoms.push(new Atom(3, 100, 160, 'generator'));
+          this.atoms.push(new Atom(4, 200, 160, 'worker'));
+          this.atoms.push(new Atom(5, 300, 160, 'router'));
+
+          // Force initial high speeds
+          this.atoms.forEach((atom) => {
+            atom.state.vx = (Math.random() - 0.5) * 30;
+            atom.state.vy = (Math.random() - 0.5) * 30;
+            atom.state.charge = (Math.random() - 0.5) * 400;
+          });
+
+          this.createInitialNetwork();
+          this.render();
+          this.updateStatus(
+            'System initialized with ' + this.atoms.length + ' atoms'
+          );
+        }
+
+        createInitialNetwork() {
+          const routers = this.atoms.filter(
+            (a) => a.metadata.role === 'router'
+          );
+          const others = this.atoms.filter((a) => a.metadata.role !== 'router');
+
+          routers.forEach((router) => {
+            others.forEach((other) => {
+              if (Math.random() < 0.8) {
+                router.createLink(other, 0.7 + Math.random() * 0.3);
+              }
+            });
+          });
+        }
+
+        update() {
+          if (!this.running) return;
+
+          const currentTime = Date.now();
+          const deltaTime = Math.min(
+            (currentTime - this.lastTime) / 1000,
+            0.03
+          );
+          this.lastTime = currentTime;
+
+          this.atoms.forEach((atom) => {
+            atom.updatePhysics(this.atoms, deltaTime);
+          });
+
+          this.processTaskQueue();
+          this.render();
+        }
+
+        start() {
+          if (this.running) return;
+          this.running = true;
+          this.lastTime = Date.now();
+          this.updateInterval = setInterval(() => this.update(), 33); // 30 FPS
+          this.updateStatus(
+            'System running - ' + this.atoms.length + ' atoms active'
+          );
+        }
+
+        stop() {
+          this.running = false;
+          if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+          }
+          this.updateStatus('System paused');
+        }
+
+        processTaskQueue() {
+          while (this.taskQueue.length > 0) {
+            const task = this.taskQueue.shift();
+            const result = this.executeTask(task);
+            this.logTask(result);
+          }
+        }
+
+        executeTask(task) {
+          let bestAtom = null;
+          let bestScore = -1;
+
+          this.atoms.forEach((atom) => {
+            if (atom.canHandle(task)) {
+              const score =
+                atom.metadata.efficiency *
+                (1 - atom.metadata.workload / atom.metadata.capacity);
+              if (score > bestScore) {
+                bestScore = score;
+                bestAtom = atom;
+              }
+            }
+          });
+
+          if (bestAtom) {
+            return bestAtom.handleTask(task);
+          } else {
+            const routers = this.atoms.filter(
+              (a) => a.metadata.role === 'router'
+            );
+            for (let router of routers) {
+              const result = router.delegate(task);
+              if (result.success) return result;
+            }
+            return {
+              success: false,
+              action: 'system_rejected',
+              task: task.type,
+            };
+          }
+        }
+
+        logTask(result) {
+          this.taskLog.push({ timestamp: Date.now(), result: result });
+          if (this.taskLog.length > 50) this.taskLog.shift();
+
+          if (result.success) this.stats.completedTasks++;
+          else this.stats.failedTasks++;
+          if (result.action === 'delegated') this.stats.delegatedTasks++;
+        }
+
+        handleSpawnRequest(requesterAtom) {
+          if (
+            requesterAtom.metadata.role !== 'generator' ||
+            this.atoms.length >= 15
+          )
+            return false;
+
+          const roleCounts = this.getRoleCounts();
+          let newRole = 'worker';
+
+          if (roleCounts.router < 2) newRole = 'router';
+          else if (roleCounts.collector < Math.ceil(roleCounts.worker / 2))
+            newRole = 'collector';
+
+          const newAtom = new Atom(
+            this.atoms.length,
+            requesterAtom.state.x + (Math.random() - 0.5) * 60,
+            requesterAtom.state.y + (Math.random() - 0.5) * 60,
+            newRole
+          );
+
+          newAtom.createLink(requesterAtom, 0.8);
+          this.atoms.push(newAtom);
+          this.updateStatus('New ' + newRole + ' spawned!');
+
+          return true;
+        }
+
+        getRoleCounts() {
+          return this.atoms.reduce((counts, atom) => {
+            counts[atom.metadata.role] = (counts[atom.metadata.role] || 0) + 1;
+            return counts;
+          }, {});
+        }
+
+        render() {
+          const canvas = document.getElementById('atomCanvas');
+          if (!canvas) return;
+
+          canvas.innerHTML = `
+                    <defs>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                    </defs>
+                `;
+
+          // Draw links
+          this.atoms.forEach((atom) => {
+            for (let linkId in atom.links) {
+              const link = atom.links[linkId];
+              const target = link.target;
+              if (!target) continue;
+
+              const line = document.createElementNS(
+                'http://www.w3.org/2000/svg',
+                'line'
+              );
+              line.setAttribute('x1', atom.state.x);
+              line.setAttribute('y1', atom.state.y);
+              line.setAttribute('x2', target.state.x);
+              line.setAttribute('y2', target.state.y);
+              line.setAttribute('stroke', this.getLinkColor(atom, target));
+              line.setAttribute(
+                'stroke-width',
+                Math.max(0.5, link.strength * 2)
+              );
+              line.setAttribute('opacity', 0.6);
+
+              const timeSinceUse = Date.now() - link.lastUsed;
+              if (timeSinceUse < 3000) {
+                line.setAttribute('stroke-dasharray', '2,2');
+              }
+
+              canvas.appendChild(line);
+            }
+          });
+
+          // Draw atoms
+          this.atoms.forEach((atom) => {
+            const circle = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'circle'
+            );
+            circle.setAttribute('cx', atom.state.x);
+            circle.setAttribute('cy', atom.state.y);
+            circle.setAttribute('r', atom.getSize());
+            circle.setAttribute('fill', atom.getColor());
+            circle.setAttribute('opacity', atom.getOpacity());
+            circle.setAttribute('filter', 'url(#glow)');
+
+            // Add movement indicator
+            const speed = Math.sqrt(
+              atom.state.vx * atom.state.vx + atom.state.vy * atom.state.vy
+            );
+            if (speed > 5) {
+              circle.setAttribute('class', 'moving');
+            }
+
+            if (atom.metadata.workload > 0) {
+              circle.setAttribute('stroke', '#fff');
+              circle.setAttribute('stroke-width', '2');
+            }
+
+            canvas.appendChild(circle);
+
+            // Role icon
+            const iconText = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'text'
+            );
+            iconText.setAttribute('x', atom.state.x);
+            iconText.setAttribute('y', atom.state.y + 3);
+            iconText.setAttribute('text-anchor', 'middle');
+            iconText.setAttribute('fill', 'white');
+            iconText.setAttribute('font-size', '8');
+            iconText.textContent = atom.metadata.icon;
+            canvas.appendChild(iconText);
+
+            // ID
+            const idText = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'text'
+            );
+            idText.setAttribute('x', atom.state.x);
+            idText.setAttribute('y', atom.state.y - atom.getSize() - 3);
+            idText.setAttribute('text-anchor', 'middle');
+            idText.setAttribute('fill', 'rgba(255,255,255,0.8)');
+            idText.setAttribute('font-size', '6');
+            idText.textContent = atom.id;
+            canvas.appendChild(idText);
+          });
+
+          this.updateUI();
+        }
+
+        getLinkColor(atomA, atomB) {
+          if (
+            atomA.metadata.role === 'router' ||
+            atomB.metadata.role === 'router'
+          )
+            return '#e74c3c';
+          if (
+            atomA.metadata.role === 'collector' ||
+            atomB.metadata.role === 'collector'
+          )
+            return '#f39c12';
+          if (
+            atomA.metadata.role === 'generator' ||
+            atomB.metadata.role === 'generator'
+          )
+            return '#2ecc71';
+          return '#3498db';
+        }
+
+        updateUI() {
+          const roleCounts = this.getRoleCounts();
+          document.getElementById('workerCount').textContent =
+            roleCounts.worker || 0;
+          document.getElementById('routerCount').textContent =
+            roleCounts.router || 0;
+          document.getElementById('generatorCount').textContent =
+            roleCounts.generator || 0;
+          document.getElementById('collectorCount').textContent =
+            roleCounts.collector || 0;
+
+          const totalLinks = this.atoms.reduce(
+            (sum, atom) => sum + Object.keys(atom.links).length,
+            0
+          );
+          document.getElementById('activeLinks').textContent = totalLinks;
+          document.getElementById('completedTasks').textContent =
+            this.stats.completedTasks;
+
+          // Update atoms list
+          const atomsList = document.getElementById('atomsList');
+          const topAtoms = [...this.atoms].slice(0, 6);
+
+          atomsList.innerHTML = topAtoms
+            .map((atom) => {
+              const speed = Math.sqrt(
+                atom.state.vx * atom.state.vx + atom.state.vy * atom.state.vy
+              ).toFixed(1);
+              return `
+                        <div class="atom-item">
+                            <span><span class="role-icon">${
+                              atom.metadata.icon
+                            }</span>${atom.id}</span>
+                            <span>Speed: ${speed} | Links: ${
+                Object.keys(atom.links).length
+              }</span>
+                        </div>
+                    `;
+            })
+            .join('');
+        }
+
+        updateStatus(message) {
+          const statusBar = document.getElementById('statusBar');
+          if (statusBar) {
+            statusBar.textContent = message;
+            setTimeout(() => {
+              if (this.running) {
+                statusBar.textContent = `Running - ${this.atoms.length} atoms - ${this.stats.completedTasks} tasks completed`;
+              }
+            }, 2000);
+          }
+        }
+
+        submitTask(taskType) {
+          this.taskQueue.push({
+            type: taskType,
+            id: Date.now(),
+            priority: Math.random(),
+          });
+        }
+
+        addAtom(role = null) {
+          const newAtom = new Atom(
+            this.atoms.length,
+            50 + Math.random() * 300,
+            50 + Math.random() * 200,
+            role
+          );
+
+          // Force high initial speed
+          newAtom.state.vx = (Math.random() - 0.5) * 40;
+          newAtom.state.vy = (Math.random() - 0.5) * 40;
+
+          this.atoms.push(newAtom);
+
+          // Create some links
+          const candidates = this.atoms.slice(0, -1);
+          for (let i = 0; i < Math.min(2, candidates.length); i++) {
+            const target =
+              candidates[Math.floor(Math.random() * candidates.length)];
+            if (target && target.id !== newAtom.id) {
+              newAtom.createLink(target, 0.5 + Math.random() * 0.4);
+            }
+          }
+
+          this.updateStatus('New atom added!');
+        }
+
+        forceMovement() {
+          // Force all atoms to move faster
+          this.atoms.forEach((atom) => {
+            atom.state.vx += (Math.random() - 0.5) * 20;
+            atom.state.vy += (Math.random() - 0.5) * 20;
+            atom.state.charge += (Math.random() - 0.5) * 100;
+          });
+          this.updateStatus('Movement boost applied!');
+        }
+      }
+
+      // Global system
+      let system = new AtomSystem();
+
+      // Control functions
+      function startSystem() {
+        system.start();
+      }
+
+      function pauseSystem() {
+        system.stop();
+      }
+
+      function resetSystem() {
+        system.stop();
+        system = new AtomSystem();
+      }
+
+      function submitTask(taskType) {
+        system.submitTask(taskType);
+        system.updateStatus(`Task ${taskType} submitted`);
+      }
+
+      function addRandomAtom() {
+        system.addAtom();
+      }
+
+      function forceMovement() {
+        system.forceMovement();
+      }
+
+      // Auto-start and demo
+      setTimeout(() => {
+        startSystem();
+
+        // Auto tasks for demo
+        setInterval(() => {
+          if (system.running && Math.random() < 0.8) {
+            const tasks = ['compute', 'analyze', 'store', 'supply'];
+            const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
+            submitTask(randomTask);
+          }
+        }, 2000);
+
+        // Periodic movement boost
+        setInterval(() => {
+          if (system.running) {
+            forceMovement();
+          }
+        }, 10000);
+      }, 1000);
+
+      // Initial render
+      system.render();
+    </script>
+  </body>
+</html>

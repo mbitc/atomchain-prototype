@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="lt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AtomChain: Funkcionalūs Atomai su Delegavimo Sistema</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: radial-gradient(circle at center, #0a0a0f, #1a1a2e, #000);
+        color: white;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .container {
+        max-width: 1800px;
+        margin: 0 auto;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .header h1 {
+        background: linear-gradient(45deg, #667eea, #764ba2, #ffd700, #ff6b6b);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 2.5em;
+        margin: 0;
+      }
+
+      .controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      button {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 30px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      }
+
+      button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+      }
+
+      .task-controls {
+        background: rgba(15, 15, 35, 0.9);
+        border-radius: 15px;
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        text-align: center;
+      }
+
+      .task-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .task-btn {
+        background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+        padding: 8px 16px;
+        font-size: 12px;
+      }
+
+      .visualization-container {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .main-viz {
+        flex: 2.5;
+        background: rgba(15, 15, 35, 0.9);
+        border-radius: 20px;
+        padding: 20px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+
+      .side-panel {
+        flex: 1;
+        background: rgba(15, 15, 35, 0.9);
+        border-radius: 20px;
+        padding: 20px;
+        backdrop-filter: blur(10px);
+        max-height: 700px;
+        overflow-y: auto;
+        border: 1px solid rgba(102, 126, 234, 0.3);
+      }
+
+      #atomCanvas {
+        width: 100%;
+        height: 700px;
+        border-radius: 15px;
+        background: radial-gradient(
+          circle at center,
+          rgba(15, 15, 35, 0.8),
+          rgba(0, 0, 0, 0.9)
+        );
+        border: 2px solid rgba(102, 126, 234, 0.2);
+      }
+
+      .atom-info {
+        margin-bottom: 15px;
+        padding: 12px;
+        background: linear-gradient(
+          135deg,
+          rgba(102, 126, 234, 0.1),
+          rgba(118, 75, 162, 0.1)
+        );
+        border-radius: 10px;
+        font-size: 11px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .role-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: bold;
+        margin: 2px;
+      }
+
+      .role-worker {
+        background: #3498db;
+      }
+      .role-router {
+        background: #e74c3c;
+      }
+      .role-generator {
+        background: #2ecc71;
+      }
+      .role-collector {
+        background: #f39c12;
+      }
+
+      .state-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 3px;
+        margin: 8px 0;
+        font-size: 9px;
+      }
+
+      .state-cell {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 2px 4px;
+        border-radius: 3px;
+        text-align: center;
+      }
+
+      .task-log {
+        max-height: 150px;
+        overflow-y: auto;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 10px;
+        font-family: monospace;
+        margin-top: 15px;
+      }
+
+      .task-entry {
+        margin: 2px 0;
+        padding: 2px;
+      }
+
+      .task-success {
+        color: #2ecc71;
+      }
+      .task-delegate {
+        color: #f39c12;
+      }
+      .task-fail {
+        color: #e74c3c;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+      }
+
+      .stat-card {
+        background: linear-gradient(
+          135deg,
+          rgba(102, 126, 234, 0.1),
+          rgba(118, 75, 162, 0.1)
+        );
+        padding: 15px;
+        border-radius: 15px;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(5px);
+      }
+
+      .stat-number {
+        font-size: 1.5em;
+        font-weight: bold;
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⚛️ AtomChain: Funkcionalūs Atomai</h1>
+        <p>12 fizinių parametrų • Vaidmenų sistema • Delegavimo logika</p>
+      </div>
+
+      <div class="controls">
+        <button onclick="startSystem()">▶️ Paleisti sistemą</button>
+        <button onclick="pauseSystem()">⏸️ Pristabdyti</button>
+        <button onclick="resetSystem()">🔄 Naujas pasaulis</button>
+        <button onclick="addRandomAtom()">➕ Pridėti atomą</button>
+        <button onclick="optimizeNetwork()">🔧 Optimizuoti tinklą</button>
+      </div>
+
+      <div class="task-controls">
+        <h3>🎯 Užduočių testai</h3>
+        <div class="task-buttons">
+          <button class="task-btn" onclick="submitTask('compute')">
+            💻 Compute
+          </button>
+          <button class="task-btn" onclick="submitTask('analyze')">
+            📊 Analyze
+          </button>
+          <button class="task-btn" onclick="submitTask('store')">
+            💾 Store
+          </button>
+          <button class="task-btn" onclick="submitTask('delegate')">
+            🔀 Delegate
+          </button>
+          <button class="task-btn" onclick="submitTask('spawn')">
+            🌱 Spawn
+          </button>
+          <button class="task-btn" onclick="submitTask('supply')">
+            📦 Supply
+          </button>
+        </div>
+      </div>
+
+      <div class="visualization-container">
+        <div class="main-viz">
+          <svg id="atomCanvas" viewBox="0 0 1200 700">
+            <!-- Dinamičkai generuojamas turinys -->
+          </svg>
+        </div>
+
+        <div class="side-panel">
+          <h3>🎛️ Sistema</h3>
+          <div id="systemInfo"></div>
+
+          <h3>⚛️ Atomai</h3>
+          <div id="atomsList"></div>
+
+          <h3>📋 Užduočių žurnalas</h3>
+          <div id="taskLog" class="task-log"></div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <h4>👷 Workers</h4>
+          <div class="stat-number" id="workerCount">0</div>
+        </div>
+        <div class="stat-card">
+          <h4>🔀 Routers</h4>
+          <div class="stat-number" id="routerCount">0</div>
+        </div>
+        <div class="stat-card">
+          <h4>🌱 Generators</h4>
+          <div class="stat-number" id="generatorCount">0</div>
+        </div>
+        <div class="stat-card">
+          <h4>📦 Collectors</h4>
+          <div class="stat-number" id="collectorCount">0</div>
+        </div>
+        <div class="stat-card">
+          <h4>🔗 Aktyvūs ryšiai</h4>
+          <div class="stat-number" id="activeLinks">0</div>
+        </div>
+        <div class="stat-card">
+          <h4>✅ Užduotys</h4>
+          <div class="stat-number" id="completedTasks">0</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Metadata presets - vaidmenų sistema
+      const MetadataPresets = {
+        worker: {
+          role: 'worker',
+          skills: ['compute', 'analyze'],
+          capacity: 1,
+          color: '#3498db',
+          icon: '👷',
+        },
+        router: {
+          role: 'router',
+          skills: ['delegate'],
+          capacity: 5,
+          color: '#e74c3c',
+          icon: '🔀',
+        },
+        generator: {
+          role: 'generator',
+          skills: ['spawn'],
+          capacity: 2,
+          color: '#2ecc71',
+          icon: '🌱',
+        },
+        collector: {
+          role: 'collector',
+          skills: ['store', 'supply'],
+          capacity: 3,
+          color: '#f39c12',
+          icon: '📦',
+        },
+      };
+
+      class Atom {
+        constructor(id, x = null, y = null, role = null) {
+          this.id = id;
+
+          // 12 fizinių parametrų state
+          this.state = {
+            x: x || 200 + Math.random() * 800,
+            y: y || 100 + Math.random() * 500,
+            z: Math.random() * 100,
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2,
+            vz: (Math.random() - 0.5) * 0.5,
+            ax: 0,
+            ay: 0,
+            az: 0,
+            spin: Math.random() * Math.PI,
+            charge: (Math.random() - 0.5) * 100,
+            mass: 1 + Math.random() * 3,
+          };
+
+          // Metadata iš presets
+          const roles = Object.keys(MetadataPresets);
+          const selectedRole =
+            role || roles[Math.floor(Math.random() * roles.length)];
+          this.metadata = { ...MetadataPresets[selectedRole] };
+          this.metadata.workload = 0;
+          this.metadata.efficiency = 0.5 + Math.random() * 0.5;
+          this.metadata.experience = 0;
+
+          // Links sistema
+          this.links = {};
+          this.linkHistory = [];
+
+          this.age = 0;
+          this.lastTaskTime = 0;
+        }
+
+        // Pagrindinė funkcija - ar gali apdoroti užduotį
+        canHandle(task) {
+          if (this.metadata.workload >= this.metadata.capacity) return false;
+          return this.metadata.skills.includes(task.type);
+        }
+
+        // Delegavimo logika
+        delegate(task) {
+          // Ieškome labiausiai tinkamo ryšio
+          let bestLink = null;
+          let bestScore = -1;
+
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            const target = link.target;
+
+            if (target && target.canHandle(task)) {
+              // Skaičiuojame tinkamumą
+              const score =
+                link.strength *
+                target.metadata.efficiency *
+                (1 - target.metadata.workload / target.metadata.capacity);
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestLink = link;
+              }
+            }
+          }
+
+          if (bestLink) {
+            const result = bestLink.target.handleTask(task);
+            bestLink.usage++;
+            bestLink.lastUsed = Date.now();
+
+            // Stipriname ryšį jei sėkminga
+            if (result.success) {
+              bestLink.strength = Math.min(1.0, bestLink.strength + 0.1);
+            }
+
+            return {
+              success: true,
+              action: 'delegated',
+              from: this.id,
+              to: bestLink.target.id,
+              task: task.type,
+              result: result,
+            };
+          }
+
+          return {
+            success: false,
+            action: 'delegation_failed',
+            from: this.id,
+            task: task.type,
+            reason: 'no_suitable_links',
+          };
+        }
+
+        // Užduoties apdorojimas
+        handleTask(task) {
+          if (!this.canHandle(task)) {
+            // Bandome deleguoti
+            const delegationResult = this.delegate(task);
+            if (delegationResult.success) {
+              return delegationResult;
+            } else {
+              return {
+                success: false,
+                action: 'rejected',
+                atom: this.id,
+                task: task.type,
+                reason: 'cannot_handle_or_delegate',
+              };
+            }
+          }
+
+          // Apdorojame užduotį patys
+          this.metadata.workload++;
+          this.lastTaskTime = Date.now();
+
+          const success = Math.random() < this.metadata.efficiency;
+
+          if (success) {
+            this.metadata.experience++;
+            this.metadata.efficiency = Math.min(
+              1.0,
+              this.metadata.efficiency + 0.01
+            );
+
+            // Specialūs veiksmai pagal vaidmenį
+            this.performRoleAction(task);
+          }
+
+          // Mažiname workload po laiko
+          setTimeout(() => {
+            this.metadata.workload = Math.max(0, this.metadata.workload - 1);
+          }, 1000);
+
+          return {
+            success: success,
+            action: success ? 'completed' : 'failed',
+            atom: this.id,
+            task: task.type,
+            efficiency: this.metadata.efficiency,
+          };
+        }
+
+        performRoleAction(task) {
+          switch (this.metadata.role) {
+            case 'worker':
+              // Darbuotojas - keičia fizines savybes
+              this.state.charge += task.type === 'compute' ? 10 : 5;
+              this.state.spin += 0.1;
+              break;
+
+            case 'router':
+              // Routeris - optimizuoja ryšius
+              this.optimizeLinks();
+              break;
+
+            case 'generator':
+              // Generatorius - gali sukurti naują atomą (retai)
+              if (Math.random() < 0.1 && window.atomSystem) {
+                window.atomSystem.handleSpawnRequest(this);
+              }
+              break;
+
+            case 'collector':
+              // Kolektorius - kaupia energiją
+              this.state.mass += 0.1;
+              this.shareResources();
+              break;
+          }
+        }
+
+        // Ryšių optimizavimas
+        optimizeLinks() {
+          // Pašaliname silpnus ryšius
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.strength < 0.3 && link.age > 100) {
+              this.removeLink(linkId);
+            }
+          }
+        }
+
+        shareResources() {
+          // Dalinasi resursais su ryšiais
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.target && link.target.state.mass < this.state.mass) {
+              const transfer = (this.state.mass - link.target.state.mass) * 0.1;
+              this.state.mass -= transfer;
+              link.target.state.mass += transfer;
+            }
+          }
+        }
+
+        // Ryšių valdymas
+        createLink(targetAtom, strength = 0.5, bidirectional = true) {
+          if (!targetAtom || targetAtom.id === this.id) return false;
+          if (this.links[targetAtom.id]) return false;
+
+          this.links[targetAtom.id] = {
+            target: targetAtom,
+            strength: strength,
+            age: 0,
+            usage: 0,
+            lastUsed: Date.now(),
+            created: Date.now(),
+          };
+
+          if (bidirectional && !targetAtom.links[this.id]) {
+            targetAtom.createLink(this, strength, false);
+          }
+
+          return true;
+        }
+
+        removeLink(targetId) {
+          if (this.links[targetId]) {
+            delete this.links[targetId];
+            return true;
+          }
+          return false;
+        }
+
+        // Fizikos atnaujinimas
+        updatePhysics(atoms, deltaTime) {
+          this.age++;
+
+          // Atnaujinome ryšių amžių
+          for (let linkId in this.links) {
+            this.links[linkId].age++;
+          }
+
+          // Pridedame bazinį judėjimą pagal vaidmenį
+          this.addRoleBasedMovement();
+
+          // Gravitacinis/magnetinis poveikis tarp atomų
+          atoms.forEach((other) => {
+            if (other.id === this.id) return;
+
+            const dx = other.state.x - this.state.x;
+            const dy = other.state.y - this.state.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 5 && distance < 200) {
+              // Gravitacijos ir atbaidymo kombinacija
+              const gravityForce =
+                ((this.state.mass * other.state.mass) / (distance * distance)) *
+                0.02;
+              const repulsionForce =
+                ((this.state.charge * other.state.charge) /
+                  (distance * distance)) *
+                0.01;
+              const netForce = gravityForce - repulsionForce;
+
+              this.state.ax += ((dx / distance) * netForce) / this.state.mass;
+              this.state.ay += ((dy / distance) * netForce) / this.state.mass;
+            }
+          });
+
+          // Ryšių poveikis - atomai su ryšiais traukiasi vienas prie kito
+          for (let linkId in this.links) {
+            const link = this.links[linkId];
+            if (link.target) {
+              const dx = link.target.state.x - this.state.x;
+              const dy = link.target.state.y - this.state.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+
+              if (distance > 30) {
+                // optimalus atstumas
+                const linkForce = link.strength * 0.05;
+                this.state.ax += (dx / distance) * linkForce;
+                this.state.ay += (dy / distance) * linkForce;
+              } else if (distance < 20) {
+                // per arti - stumia
+                const pushForce = 0.02;
+                this.state.ax -= (dx / distance) * pushForce;
+                this.state.ay -= (dy / distance) * pushForce;
+              }
+            }
+          }
+
+          // Atnaujinome greitį ir poziciją su didesniu deltaTime multiplier
+          const speedMultiplier = 10; // Pagreitinsime judėjimą
+          this.state.vx += this.state.ax * deltaTime * speedMultiplier;
+          this.state.vy += this.state.ay * deltaTime * speedMultiplier;
+          this.state.vz += this.state.az * deltaTime * speedMultiplier;
+
+          // Ribojame maksimalų greitį
+          const maxSpeed = 50;
+          const currentSpeed = Math.sqrt(
+            this.state.vx * this.state.vx + this.state.vy * this.state.vy
+          );
+          if (currentSpeed > maxSpeed) {
+            this.state.vx = (this.state.vx / currentSpeed) * maxSpeed;
+            this.state.vy = (this.state.vy / currentSpeed) * maxSpeed;
+          }
+
+          this.state.x += this.state.vx * deltaTime;
+          this.state.y += this.state.vy * deltaTime;
+          this.state.z += this.state.vz * deltaTime;
+
+          // Spin atnaujinimas
+          this.state.spin += this.state.vx * 0.01;
+
+          // Slopinimas
+          this.state.vx *= 0.98;
+          this.state.vy *= 0.98;
+          this.state.vz *= 0.95;
+
+          // Resetinam pagreičius
+          this.state.ax = this.state.ay = this.state.az = 0;
+
+          // Ribų tikrinimas
+          this.checkBoundaries();
+        }
+
+        addRoleBasedMovement() {
+          // Kiekvienas vaidmuo turi savo judėjimo stilių
+          switch (this.metadata.role) {
+            case 'worker':
+              // Worker'iai juda tiesiomis linijomis
+              if (Math.random() < 0.02) {
+                this.state.vx += (Math.random() - 0.5) * 3;
+                this.state.vy += (Math.random() - 0.5) * 3;
+              }
+              break;
+
+            case 'router':
+              // Router'iai daro orbitinius judėjimus
+              const routerAngle = this.age * 0.02;
+              this.state.vx += Math.cos(routerAngle) * 0.5;
+              this.state.vy += Math.sin(routerAngle) * 0.5;
+              break;
+
+            case 'collector':
+              // Collector'iai juda lėčiau bet stabiliai
+              if (Math.random() < 0.01) {
+                this.state.vx += (Math.random() - 0.5) * 1;
+                this.state.vy += (Math.random() - 0.5) * 1;
+              }
+              break;
+
+            case 'generator':
+              // Generator'iai daro neregularius šuolius
+              if (Math.random() < 0.005) {
+                this.state.vx += (Math.random() - 0.5) * 8;
+                this.state.vy += (Math.random() - 0.5) * 8;
+              }
+              break;
+          }
+
+          // Workload poveikis judėjimui
+          if (this.metadata.workload > 0) {
+            // Užimti atomai juda greičiau
+            this.state.vx *= 1.1;
+            this.state.vy *= 1.1;
+          }
+        }
+
+        checkBoundaries() {
+          const margin = 50;
+          const bounce = 0.8; // Atšokimo koeficientas
+
+          if (this.state.x < margin) {
+            this.state.x = margin;
+            this.state.vx = Math.abs(this.state.vx) * bounce;
+          }
+          if (this.state.x > 1150) {
+            this.state.x = 1150;
+            this.state.vx = -Math.abs(this.state.vx) * bounce;
+          }
+          if (this.state.y < margin) {
+            this.state.y = margin;
+            this.state.vy = Math.abs(this.state.vy) * bounce;
+          }
+          if (this.state.y > 650) {
+            this.state.y = 650;
+            this.state.vy = -Math.abs(this.state.vy) * bounce;
+          }
+
+          // Z koordinatės ribos
+          if (this.state.z < 0) {
+            this.state.z = 0;
+            this.state.vz = Math.abs(this.state.vz) * bounce;
+          }
+          if (this.state.z > 100) {
+            this.state.z = 100;
+            this.state.vz = -Math.abs(this.state.vz) * bounce;
+          }
+        }
+
+        // Vizualinės savybės
+        getSize() {
+          return Math.max(
+            5,
+            Math.min(
+              20,
+              5 + this.state.mass * 2 + this.metadata.experience * 0.5
+            )
+          );
+        }
+
+        getColor() {
+          return this.metadata.color;
+        }
+
+        getOpacity() {
+          const workloadFactor =
+            1 - (this.metadata.workload / this.metadata.capacity) * 0.3;
+          return Math.max(0.4, workloadFactor);
+        }
+      }
+
+      class AtomSystem {
+        constructor() {
+          this.atoms = [];
+          this.running = false;
+          this.taskQueue = [];
+          this.taskLog = [];
+          this.stats = {
+            completedTasks: 0,
+            delegatedTasks: 0,
+            failedTasks: 0,
+          };
+          this.lastTime = Date.now();
+          this.updateInterval = null;
+
+          window.atomSystem = this; // Global prieiga spawn funkcijoms
+          this.initialize();
+        }
+
+        initialize() {
+          this.atoms = [];
+
+          // Sukuriame pradinį atomų rinkinį su aiškiais vaidmenimis ir pradiniais greičiais
+          this.atoms.push(new Atom(0, 300, 200, 'worker'));
+          this.atoms.push(new Atom(1, 600, 200, 'router'));
+          this.atoms.push(new Atom(2, 900, 200, 'collector'));
+          this.atoms.push(new Atom(3, 300, 400, 'generator'));
+          this.atoms.push(new Atom(4, 600, 400, 'worker'));
+          this.atoms.push(new Atom(5, 900, 400, 'router'));
+
+          // Pridedame pradinius greičius visiems atomams
+          this.atoms.forEach((atom) => {
+            atom.state.vx = (Math.random() - 0.5) * 10;
+            atom.state.vy = (Math.random() - 0.5) * 10;
+            atom.state.charge = (Math.random() - 0.5) * 200; // Didesnis charge range
+          });
+
+          // Sukuriame pradiniuos ryšius
+          this.createInitialNetwork();
+          this.render();
+        }
+
+        createInitialNetwork() {
+          // Router'iai jungiasi su visais
+          const routers = this.atoms.filter(
+            (a) => a.metadata.role === 'router'
+          );
+          const others = this.atoms.filter((a) => a.metadata.role !== 'router');
+
+          routers.forEach((router) => {
+            others.forEach((other) => {
+              if (Math.random() < 0.7) {
+                router.createLink(other, 0.6 + Math.random() * 0.3);
+              }
+            });
+          });
+
+          // Worker'iai jungiasi su collector'iais
+          const workers = this.atoms.filter(
+            (a) => a.metadata.role === 'worker'
+          );
+          const collectors = this.atoms.filter(
+            (a) => a.metadata.role === 'collector'
+          );
+
+          workers.forEach((worker) => {
+            collectors.forEach((collector) => {
+              if (Math.random() < 0.5) {
+                worker.createLink(collector, 0.4 + Math.random() * 0.4);
+              }
+            });
+          });
+        }
+
+        update() {
+          if (!this.running) return;
+
+          const currentTime = Date.now();
+          const deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1); // Max 0.1s per frame
+          this.lastTime = currentTime;
+
+          // Atnaujinome atomų fiziką
+          this.atoms.forEach((atom) => {
+            atom.updatePhysics(this.atoms, deltaTime);
+          });
+
+          // Apdorojome užduočių eilę
+          this.processTaskQueue();
+
+          // Optimizuojame tinklą periodiškai
+          if (Math.random() < 0.01) {
+            this.networkOptimization();
+          }
+
+          this.render();
+        }
+
+        start() {
+          if (this.running) return;
+          this.running = true;
+          this.lastTime = Date.now();
+          this.updateInterval = setInterval(() => this.update(), 100); // 10 FPS
+        }
+
+        stop() {
+          this.running = false;
+          if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+          }
+        }
+
+        processTaskQueue() {
+          while (this.taskQueue.length > 0) {
+            const task = this.taskQueue.shift();
+            const result = this.executeTask(task);
+            this.logTask(result);
+          }
+        }
+
+        executeTask(task) {
+          // Randame tinkamiausią atomą užduočiai
+          let bestAtom = null;
+          let bestScore = -1;
+
+          this.atoms.forEach((atom) => {
+            if (atom.canHandle(task)) {
+              const score =
+                atom.metadata.efficiency *
+                (1 - atom.metadata.workload / atom.metadata.capacity) *
+                (1 + atom.metadata.experience * 0.1);
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestAtom = atom;
+              }
+            }
+          });
+
+          if (bestAtom) {
+            return bestAtom.handleTask(task);
+          } else {
+            // Jei niekas negali apdoroti, bandome per router'ius
+            const routers = this.atoms.filter(
+              (a) => a.metadata.role === 'router'
+            );
+            for (let router of routers) {
+              const result = router.delegate(task);
+              if (result.success) {
+                return result;
+              }
+            }
+
+            return {
+              success: false,
+              action: 'system_rejected',
+              task: task.type,
+              reason: 'no_capable_atoms',
+            };
+          }
+        }
+
+        logTask(result) {
+          this.taskLog.push({
+            timestamp: Date.now(),
+            result: result,
+          });
+
+          if (this.taskLog.length > 100) {
+            this.taskLog.shift();
+          }
+
+          // Atnaujinome statistikas
+          if (result.success) {
+            this.stats.completedTasks++;
+          } else {
+            this.stats.failedTasks++;
+          }
+
+          if (result.action === 'delegated') {
+            this.stats.delegatedTasks++;
+          }
+        }
+
+        networkOptimization() {
+          // Automatinis tinklo optimizavimas
+          this.atoms.forEach((atom) => {
+            // Pašaliname neaktyvius ryšius
+            for (let linkId in atom.links) {
+              const link = atom.links[linkId];
+              const timeSinceLastUse = Date.now() - link.lastUsed;
+
+              if (timeSinceLastUse > 30000 && link.strength < 0.4) {
+                // 30 sek neaktyvus
+                atom.removeLink(linkId);
+              }
+            }
+
+            // Formuojame naujus ryšius pagal poreikį
+            if (Object.keys(atom.links).length < 3) {
+              this.createAdaptiveLinks(atom);
+            }
+          });
+        }
+
+        createAdaptiveLinks(atom) {
+          const candidates = this.atoms.filter((candidate) => {
+            if (candidate.id === atom.id) return false;
+            if (atom.links[candidate.id]) return false;
+
+            // Ryšio naudingumas pagal vaidmenis
+            if (atom.metadata.role === 'worker') {
+              return (
+                candidate.metadata.role === 'collector' ||
+                candidate.metadata.role === 'router'
+              );
+            }
+            if (atom.metadata.role === 'router') {
+              return true; // Router'is nori jungties su visais
+            }
+            if (atom.metadata.role === 'collector') {
+              return (
+                candidate.metadata.role === 'worker' ||
+                candidate.metadata.role === 'generator'
+              );
+            }
+            if (atom.metadata.role === 'generator') {
+              return (
+                candidate.metadata.role === 'collector' ||
+                candidate.metadata.role === 'router'
+              );
+            }
+
+            return Math.random() < 0.3;
+          });
+
+          if (candidates.length > 0) {
+            const target =
+              candidates[Math.floor(Math.random() * candidates.length)];
+            atom.createLink(target, 0.3 + Math.random() * 0.4);
+          }
+        }
+
+        handleSpawnRequest(requesterAtom) {
+          // Tik generator'iai gali spawn'inti ir tik jei sistema nedidelė
+          if (requesterAtom.metadata.role !== 'generator') return false;
+          if (this.atoms.length >= 20) return false;
+
+          // Apsisprendžiame, kokio tipo atomą sukurti pagal sistemos poreikius
+          const roleCounts = this.getRoleCounts();
+          let newRole = 'worker'; // default
+
+          // Logika pagal poreikius
+          if (roleCounts.router < 2) newRole = 'router';
+          else if (roleCounts.collector < Math.ceil(roleCounts.worker / 2))
+            newRole = 'collector';
+          else if (roleCounts.generator < 2) newRole = 'generator';
+
+          const newAtom = new Atom(
+            this.atoms.length,
+            requesterAtom.state.x + (Math.random() - 0.5) * 100,
+            requesterAtom.state.y + (Math.random() - 0.5) * 100,
+            newRole
+          );
+
+          // Naujasis atomas formuoja ryšį su spawn'intoju
+          newAtom.createLink(requesterAtom, 0.8);
+
+          this.atoms.push(newAtom);
+          this.logTask({
+            success: true,
+            action: 'spawned',
+            atom: requesterAtom.id,
+            newAtom: newAtom.id,
+            role: newRole,
+          });
+
+          return true;
+        }
+
+        getRoleCounts() {
+          return this.atoms.reduce((counts, atom) => {
+            counts[atom.metadata.role] = (counts[atom.metadata.role] || 0) + 1;
+            return counts;
+          }, {});
+        }
+
+        render() {
+          const canvas = document.getElementById('atomCanvas');
+          if (!canvas) return;
+
+          canvas.innerHTML = `
+                    <defs>
+                        <radialGradient id="workerGlow" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" style="stop-color:rgba(52,152,219,0.8);stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:rgba(52,152,219,0);stop-opacity:0" />
+                        </radialGradient>
+                        <radialGradient id="routerGlow" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" style="stop-color:rgba(231,76,60,0.8);stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:rgba(231,76,60,0);stop-opacity:0" />
+                        </radialGradient>
+                        <radialGradient id="generatorGlow" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" style="stop-color:rgba(46,204,113,0.8);stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:rgba(46,204,113,0);stop-opacity:0" />
+                        </radialGradient>
+                        <radialGradient id="collectorGlow" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" style="stop-color:rgba(243,156,18,0.8);stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:rgba(243,156,18,0);stop-opacity:0" />
+                        </radialGradient>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                            <feMerge> 
+                                <feMergeNode in="coloredBlur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                        </filter>
+                    </defs>
+                `;
+
+          // Piešiame ryšius su delegavimo indikacija
+          this.atoms.forEach((atom) => {
+            for (let linkId in atom.links) {
+              const link = atom.links[linkId];
+              const target = link.target;
+
+              if (!target) continue;
+
+              const line = document.createElementNS(
+                'http://www.w3.org/2000/svg',
+                'line'
+              );
+              line.setAttribute('x1', atom.state.x);
+              line.setAttribute('y1', atom.state.y);
+              line.setAttribute('x2', target.state.x);
+              line.setAttribute('y2', target.state.y);
+              line.setAttribute('stroke', this.getLinkColor(atom, target));
+              line.setAttribute('stroke-width', Math.max(1, link.strength * 4));
+              line.setAttribute('opacity', 0.4 + link.strength * 0.4);
+
+              // Animacija jei neseniai naudotas
+              const timeSinceUse = Date.now() - link.lastUsed;
+              if (timeSinceUse < 5000) {
+                line.setAttribute('stroke-dasharray', '3,3');
+              }
+
+              canvas.appendChild(line);
+            }
+          });
+
+          // Piešiame atomus
+          this.atoms.forEach((atom) => {
+            // Pagrindinis atomo apskritimas
+            const circle = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'circle'
+            );
+            circle.setAttribute('cx', atom.state.x);
+            circle.setAttribute('cy', atom.state.y);
+            circle.setAttribute('r', atom.getSize());
+            circle.setAttribute('fill', `url(#${atom.metadata.role}Glow)`);
+            circle.setAttribute('opacity', atom.getOpacity());
+            circle.setAttribute('filter', 'url(#glow)');
+
+            // Workload indikatorius
+            if (atom.metadata.workload > 0) {
+              circle.setAttribute('stroke', '#fff');
+              circle.setAttribute('stroke-width', atom.metadata.workload);
+            }
+
+            canvas.appendChild(circle);
+
+            // Vaidmens ikona
+            const iconText = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'text'
+            );
+            iconText.setAttribute('x', atom.state.x);
+            iconText.setAttribute('y', atom.state.y + 4);
+            iconText.setAttribute('text-anchor', 'middle');
+            iconText.setAttribute('fill', 'white');
+            iconText.setAttribute('font-size', '12');
+            iconText.textContent = atom.metadata.icon;
+            canvas.appendChild(iconText);
+
+            // Atom ID
+            const idText = document.createElementNS(
+              'http://www.w3.org/2000/svg',
+              'text'
+            );
+            idText.setAttribute('x', atom.state.x);
+            idText.setAttribute('y', atom.state.y - atom.getSize() - 5);
+            idText.setAttribute('text-anchor', 'middle');
+            idText.setAttribute('fill', 'rgba(255,255,255,0.8)');
+            idText.setAttribute('font-size', '8');
+            idText.setAttribute('font-weight', 'bold');
+            idText.textContent = atom.id;
+            canvas.appendChild(idText);
+
+            // Efficiency indikatorius
+            if (atom.metadata.experience > 5) {
+              const expRing = document.createElementNS(
+                'http://www.w3.org/2000/svg',
+                'circle'
+              );
+              expRing.setAttribute('cx', atom.state.x);
+              expRing.setAttribute('cy', atom.state.y);
+              expRing.setAttribute('r', atom.getSize() + 3);
+              expRing.setAttribute('fill', 'none');
+              expRing.setAttribute('stroke', '#ffd700');
+              expRing.setAttribute('stroke-width', '1');
+              expRing.setAttribute('opacity', '0.6');
+              canvas.appendChild(expRing);
+            }
+          });
+
+          this.updateUI();
+        }
+
+        getLinkColor(atomA, atomB) {
+          // Spalva pagal ryšio tipą
+          if (
+            atomA.metadata.role === 'router' ||
+            atomB.metadata.role === 'router'
+          ) {
+            return '#e74c3c'; // raudona - routing
+          }
+          if (
+            atomA.metadata.role === 'collector' ||
+            atomB.metadata.role === 'collector'
+          ) {
+            return '#f39c12'; // oranžinė - resource sharing
+          }
+          if (
+            atomA.metadata.role === 'generator' ||
+            atomB.metadata.role === 'generator'
+          ) {
+            return '#2ecc71'; // žalia - spawning
+          }
+          return '#3498db'; // mėlyna - working
+        }
+
+        updateUI() {
+          // Role counts
+          const roleCounts = this.getRoleCounts();
+          document.getElementById('workerCount').textContent =
+            roleCounts.worker || 0;
+          document.getElementById('routerCount').textContent =
+            roleCounts.router || 0;
+          document.getElementById('generatorCount').textContent =
+            roleCounts.generator || 0;
+          document.getElementById('collectorCount').textContent =
+            roleCounts.collector || 0;
+
+          // Active links
+          const totalLinks = this.atoms.reduce(
+            (sum, atom) => sum + Object.keys(atom.links).length,
+            0
+          );
+          document.getElementById('activeLinks').textContent = totalLinks;
+
+          // Completed tasks
+          document.getElementById('completedTasks').textContent =
+            this.stats.completedTasks;
+
+          // System info
+          const systemInfo = document.getElementById('systemInfo');
+          if (!systemInfo) return;
+
+          const avgEfficiency =
+            this.atoms.length > 0
+              ? this.atoms.reduce(
+                  (sum, atom) => sum + atom.metadata.efficiency,
+                  0
+                ) / this.atoms.length
+              : 0;
+          const totalWorkload = this.atoms.reduce(
+            (sum, atom) => sum + atom.metadata.workload,
+            0
+          );
+          const networkUtilization =
+            this.stats.delegatedTasks /
+            Math.max(1, this.stats.completedTasks + this.stats.failedTasks);
+
+          systemInfo.innerHTML = `
+                    <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>🎯 Vid. efektyvumas:</strong> ${(
+                          avgEfficiency * 100
+                        ).toFixed(1)}%
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>⚡ Bendras workload:</strong> ${totalWorkload}
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>🌐 Tinklo naudojimas:</strong> ${(
+                          networkUtilization * 100
+                        ).toFixed(1)}%
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>❌ Nesėkmių:</strong> ${this.stats.failedTasks}
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 8px;">
+                        <strong>🔄 Delegacijų:</strong> ${
+                          this.stats.delegatedTasks
+                        }
+                    </div>
+                `;
+
+          // Atoms list
+          const atomsList = document.getElementById('atomsList');
+          if (!atomsList) return;
+
+          const topAtoms = [...this.atoms]
+            .sort((a, b) => b.metadata.experience - a.metadata.experience)
+            .slice(0, 8);
+
+          atomsList.innerHTML = topAtoms
+            .map(
+              (atom) => `
+                    <div class="atom-info">
+                        <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                            <span class="role-badge role-${
+                              atom.metadata.role
+                            }">${atom.metadata.icon} ${atom.id}</span>
+                            <span style="margin-left: auto; font-size: 10px;">EXP: ${
+                              atom.metadata.experience
+                            }</span>
+                        </div>
+                        <div class="state-grid">
+                            <div class="state-cell">X: ${atom.state.x.toFixed(
+                              0
+                            )}</div>
+                            <div class="state-cell">Y: ${atom.state.y.toFixed(
+                              0
+                            )}</div>
+                            <div class="state-cell">VX: ${atom.state.vx.toFixed(
+                              1
+                            )}</div>
+                            <div class="state-cell">VY: ${atom.state.vy.toFixed(
+                              1
+                            )}</div>
+                            <div class="state-cell">M: ${atom.state.mass.toFixed(
+                              1
+                            )}</div>
+                            <div class="state-cell">Q: ${atom.state.charge.toFixed(
+                              0
+                            )}</div>
+                            <div class="state-cell">S: ${atom.state.spin.toFixed(
+                              1
+                            )}</div>
+                            <div class="state-cell">Z: ${atom.state.z.toFixed(
+                              0
+                            )}</div>
+                        </div>
+                        <div style="font-size: 10px; color: #aaa; margin-top: 5px;">
+                            Links: ${Object.keys(atom.links).length} | 
+                            Efficiency: ${(
+                              atom.metadata.efficiency * 100
+                            ).toFixed(0)}% |
+                            Workload: ${atom.metadata.workload}/${
+                atom.metadata.capacity
+              }
+                        </div>
+                        <div style="font-size: 9px; color: #ccc;">
+                            Skills: ${atom.metadata.skills.join(', ')}
+                        </div>
+                    </div>
+                `
+            )
+            .join('');
+
+          // Task log
+          const taskLog = document.getElementById('taskLog');
+          if (!taskLog) return;
+
+          const recentTasks = this.taskLog.slice(-20).reverse();
+
+          taskLog.innerHTML = recentTasks
+            .map((entry) => {
+              const result = entry.result;
+              const time = new Date(entry.timestamp).toLocaleTimeString();
+              let className = 'task-fail';
+
+              if (result.success) className = 'task-success';
+              else if (result.action === 'delegated')
+                className = 'task-delegate';
+
+              return `<div class="task-entry ${className}">
+                        [${time}] ${result.action}: ${result.task} ${
+                result.from
+                  ? `(${result.from}→${result.to})`
+                  : `(${result.atom})`
+              }
+                    </div>`;
+            })
+            .join('');
+        }
+
+        // Public methods for controls
+        submitTask(taskType) {
+          this.taskQueue.push({
+            type: taskType,
+            id: Date.now(),
+            priority: Math.random(),
+          });
+        }
+
+        addAtom(role = null) {
+          const newAtom = new Atom(
+            this.atoms.length,
+            300 + Math.random() * 600,
+            200 + Math.random() * 300,
+            role
+          );
+          this.atoms.push(newAtom);
+
+          // Automatiškai sukuriame keletą ryšių
+          const candidates = this.atoms.slice(0, -1); // visi išskyrus naują
+          for (let i = 0; i < Math.min(2, candidates.length); i++) {
+            const target =
+              candidates[Math.floor(Math.random() * candidates.length)];
+            if (target && target.id !== newAtom.id) {
+              newAtom.createLink(target, 0.4 + Math.random() * 0.4);
+            }
+          }
+        }
+      }
+
+      // Global system instance
+      let system = new AtomSystem();
+
+      // Control functions
+      function startSystem() {
+        system.start();
+      }
+
+      function pauseSystem() {
+        system.stop();
+      }
+
+      function resetSystem() {
+        system.stop();
+        system = new AtomSystem();
+      }
+
+      function submitTask(taskType) {
+        system.submitTask(taskType);
+      }
+
+      function addRandomAtom() {
+        system.addAtom();
+      }
+
+      function optimizeNetwork() {
+        system.networkOptimization();
+        system.logTask({
+          success: true,
+          action: 'network_optimized',
+          task: 'optimize',
+          atom: 'system',
+        });
+      }
+
+      // Auto-start demonstracija
+      setTimeout(() => {
+        startSystem();
+
+        // Automatinės užduotys demonstracijai
+        setInterval(() => {
+          if (system.running && Math.random() < 0.7) {
+            const tasks = ['compute', 'analyze', 'store', 'supply'];
+            const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
+            submitTask(randomTask);
+          }
+        }, 3000);
+      }, 1000);
+
+      // Pradinė vizualizacija
+      system.render();
+    </script>
+  </body>
+</html>
